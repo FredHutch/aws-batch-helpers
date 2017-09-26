@@ -92,6 +92,7 @@ def monitor_jobs(config, force_check=False):
     status_counts = {}
 
     # Check the status of each job in batches of 100
+    n_jobs = len(id_list)
     while len(id_list) > 0:
         status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
         if len(id_list) < 100:
@@ -103,13 +104,13 @@ def monitor_jobs(config, force_check=False):
             s = j['status']
             status_counts[s] = status_counts.get(s, 0) + 1
 
-    print("Total number of jobs: {}".format(len(id_list)))
+    print("Total number of jobs: {}".format(n_jobs))
     print("")
     for k, v in status_counts.items():
         print("\t{}:\t{}".format(k, v))
 
     # Check to see if the project is completed
-    if status_counts.get("SUCCEEDED", 0) == len(id_list):
+    if status_counts.get("SUCCEEDED", 0) == n_jobs:
         config["status"] = "COMPLETED"
 
     return config
