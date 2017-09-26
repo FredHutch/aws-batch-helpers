@@ -38,7 +38,7 @@ def valid_config(config):
 
 def submit_jobs(config):
     """Submit a set of jobs."""
-    if config.get('status') in ["SUBMITTED", "COMPLETED"]:
+    if config.get('status') in ["SUBMITTED", "COMPLETED", "CANCELED"]:
         print("Project has already been submitted, exiting.")
         return
 
@@ -91,6 +91,9 @@ def monitor_jobs(config, force_check=False):
     # Count up the number of jobs by status
     status_counts = {}
 
+    # Keep track of the jobs that have failed
+    failed_jobs = []
+
     # Check the status of each job in batches of 100
     n_jobs = len(id_list)
     while len(id_list) > 0:
@@ -103,15 +106,49 @@ def monitor_jobs(config, force_check=False):
         for j in status['jobs']:
             s = j['status']
             status_counts[s] = status_counts.get(s, 0) + 1
+            if s == "FAILED":
+                failed_jobs.append(j['jobId'])
 
     print("Total number of jobs: {}".format(n_jobs))
     print("")
     for k, v in status_counts.items():
         print("\t{}:\t{}".format(k, v))
 
+    if len(failed_jobs) > 0:
+        print("\n\nFAILED:\n")
+        for f in failed_jobs:
+            print(f)
+
     # Check to see if the project is completed
     if status_counts.get("SUCCEEDED", 0) == n_jobs:
         config["status"] = "COMPLETED"
+
+    return config
+
+
+def cancel_jobs(config):
+    """Cancel all of the currently pending jobs."""
+    assert "jobs" in config, "No jobs found in config file"
+
+    # Prompt the user for confirmation
+    response = raw_input("Are you sure you want to cancel these jobs? (Y/N): ")
+    assert response == "Y", "Do not cancel without confirmation"
+
+    # Get a message to submit as justfication for the failure
+    cancel_msg = raw_input("What message should describe these cancellations?\n")
+
+    # Get the list of IDs
+    id_list = [j["jobId"] for j in config["jobs"]]
+
+    # Set up the connection to Batch with boto
+    client = boto3.client('batch')
+
+    # Cancel jobs
+    for job_id in id_list:
+        print("Cancelling {}".format(job_id))
+        client.cancel_job(jobId=job_id, reason=cancel_msg)
+
+    config["status"] = "CANCELED"
 
     return config
 
@@ -123,7 +160,7 @@ if __name__ == "__main__":
 
     parser.add_argument("cmd",
                         type=str,
-                        help="""Command to run: submit, monitor""")
+                        help="""Command to run: submit, monitor, cancel""")
 
     parser.add_argument("project_config",
                         type=str,
@@ -135,7 +172,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    assert args.cmd in ["submit", "monitor"], "Please specify a command: submit or monitor"
+    msg = "Please specify a command: submit, monitor, or cancel"
+    assert args.cmd in ["submit", "monitor", "cancel"], msg
 
     # Read in the config file
     config = json.load(open(args.project_config, 'rt'))
@@ -148,6 +186,9 @@ if __name__ == "__main__":
     elif args.cmd == "monitor":
         # Monitor the progress of a set of jobs
         config = monitor_jobs(config, force_check=args.force_check)
+    elif args.cmd == "cancel":
+        # Cancel all of the currently pending jobs
+        config = cancel_jobs(config)
 
     # Update the config file
     with open(args.project_config, 'wt') as fo:
