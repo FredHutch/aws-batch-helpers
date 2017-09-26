@@ -88,14 +88,20 @@ def monitor_jobs(config, force_check=False):
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    # Check the status of each job
-    status = client.describe_jobs(jobs=id_list)
-
     # Count up the number of jobs by status
     status_counts = {}
-    for j in status['jobs']:
-        s = j['status']
-        status_counts[s] = status_counts.get(s, 0) + 1
+
+    # Check the status of each job in batches of 100
+    while len(id_list) > 0:
+        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
+        if len(id_list) < 100:
+            id_list = []
+        else:
+            id_list = id_list[100:]
+
+        for j in status['jobs']:
+            s = j['status']
+            status_counts[s] = status_counts.get(s, 0) + 1
 
     print("Total number of jobs: {}".format(len(id_list)))
     print("")
