@@ -52,10 +52,10 @@ def submit_jobs(config):
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    for sample in config["samples"]:
+    for sample_n, sample in enumerate(config["samples"]):
         # Use the parameters from the input file to submit the jobs
         r = client.submit_job(
-                jobName="{}_{}".format(config["name"], sample),
+                jobName="{}_{}".format(config["name"], sample_n),
                 jobQueue=config["queue"],
                 jobDefinition=config["job_definition"],
                 parameters={
