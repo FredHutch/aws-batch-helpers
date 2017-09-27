@@ -28,4 +28,5 @@ The format of each project config file is as follows:
 
 ### Scripts
 
-    * project-helper.py: Used to submit and monitor the status of projects on AWS Batch
+  * project-helper.py: Used to submit and monitor the status of projects on AWS Batch
+  * run-and-watch.py: Run a command in Batch and watch for the output
