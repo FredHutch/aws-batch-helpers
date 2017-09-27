@@ -59,7 +59,7 @@ def submit_jobs(config):
                 jobQueue=config["queue"],
                 jobDefinition=config["job_definition"],
                 parameters={
-                    "input": "sra://{}".format(sample),
+                    "input": sample,
                     "ref_db": config["db"],
                     "output_folder": config["output_folder"]
                     }
