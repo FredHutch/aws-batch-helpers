@@ -84,7 +84,7 @@ def monitor_jobs(config, force_check=False):
             print("Exiting, use --force-check to force check job status.")
     # Get the list of IDs
     id_list = [j["jobId"] for j in config["jobs"]]
-    
+
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
@@ -107,7 +107,7 @@ def monitor_jobs(config, force_check=False):
             s = j['status']
             status_counts[s] = status_counts.get(s, 0) + 1
             if s == "FAILED":
-                failed_jobs.append(j['jobId'])
+                failed_jobs.append((j['jobId'], j['statusReason']))
 
     print("Total number of jobs: {}".format(n_jobs))
     print("")
