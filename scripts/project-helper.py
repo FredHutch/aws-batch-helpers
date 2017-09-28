@@ -153,6 +153,44 @@ def cancel_jobs(config):
     return config
 
 
+def save_all_logs(config):
+    """Save all of the logs to their own local file."""
+    assert "jobs" in config, "No jobs found in config file"
+
+    # Get the list of IDs
+    id_list = [j["jobId"] for j in config["jobs"]]
+
+    # Set up the connection to Batch with boto
+    client = boto3.client('batch')
+
+    # Keep track of the jobs with logs
+    job_log_ids = {}  # key is log_id, value is job_name+job_id
+
+    # Check the status of each job in batches of 100
+    n_jobs = len(id_list)
+    while len(id_list) > 0:
+        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
+        if len(id_list) < 100:
+            id_list = []
+        else:
+            id_list = id_list[100:]
+
+        for j in status['jobs']:
+            if 'container' in j and 'logStreamName' in j['container']:
+                # Save the log stream name
+                fp = "{}.{}.{}.log".format(j['status'], j['jobName'], j['jobId'])
+                job_log_ids[j['container']['logStreamName']] = fp
+
+    # Now get all of the logs
+    client = boto3.client('logs')
+    for log_id, fp in job_log_ids.items():
+        response = client.get_log_events(logGroupName='/aws/batch/job', logStreamName=log_id)
+        print("Writing to " + fp)
+        with open(fp, 'wt') as fo:
+            for event in response['events']:
+                fo.write(event['message'] + '\n')
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""
     Submit and monitor the status of projects on AWS Batch.
@@ -160,7 +198,7 @@ if __name__ == "__main__":
 
     parser.add_argument("cmd",
                         type=str,
-                        help="""Command to run: submit, monitor, cancel""")
+                        help="""Command to run: submit, monitor, cancel, logs""")
 
     parser.add_argument("project_config",
                         type=str,
@@ -173,7 +211,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     msg = "Please specify a command: submit, monitor, or cancel"
-    assert args.cmd in ["submit", "monitor", "cancel"], msg
+    assert args.cmd in ["submit", "monitor", "cancel", "logs"], msg
 
     # Read in the config file
     config = json.load(open(args.project_config, 'rt'))
@@ -189,7 +227,11 @@ if __name__ == "__main__":
     elif args.cmd == "cancel":
         # Cancel all of the currently pending jobs
         config = cancel_jobs(config)
-
-    # Update the config file
-    with open(args.project_config, 'wt') as fo:
-        json.dump(config, fo, indent=4)
+    
+    if args.cmd == "logs":
+        # Save all of the logs to their own local file
+        save_all_logs(config)
+    else:
+        # Update the config file
+        with open(args.project_config, 'wt') as fo:
+            json.dump(config, fo, indent=4)
