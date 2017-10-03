@@ -60,8 +60,9 @@ def submit_jobs(config, force=False):
 
     for sample_n, sample in enumerate(config["samples"]):
         # Use the parameters from the input file to submit the jobs
+        job_name = "{}_{}".format(config["name"], sample_n)
         r = client.submit_job(
-                jobName="{}_{}".format(config["name"], sample_n),
+                jobName=job_name,
                 jobQueue=config["queue"],
                 jobDefinition=config["job_definition"],
                 parameters={
@@ -72,6 +73,9 @@ def submit_jobs(config, force=False):
             )
         # Save the response, which includes the jobName and jobId (as a dict)
         config["jobs"].append({"jobName": r["jobName"], "jobId": r["jobId"]})
+
+        print("Submitted {}: {}".format(job_name, r['jobId']))
+        break
 
     # Set the project status to "SUBMITTED"
     config["status"] = "SUBMITTED"
