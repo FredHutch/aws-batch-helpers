@@ -36,15 +36,21 @@ def valid_config(config):
     return True
 
 
-def submit_jobs(config):
+def submit_jobs(config, force=False):
     """Submit a set of jobs."""
     if config.get('status') in ["SUBMITTED", "COMPLETED", "CANCELED"]:
-        print("Project has already been submitted, exiting.")
-        return
+        if force:
+            print("Project has already been submitted, resubmitting.")
+        else:
+            print("Project has already been submitted, exiting.")
+            return
 
     if "jobs" in config:
-        print("'jobs' already found in config, exiting.")
-        return
+        if force:
+            print("'jobs' already found in config, resubmitting.")
+        else:
+            print("'jobs' already found in config, exiting.")
+            return
 
     # Set up the list of jobs
     config["jobs"] = []
@@ -221,7 +227,8 @@ if __name__ == "__main__":
 
     parser.add_argument("cmd",
                         type=str,
-                        help="""Command to run: submit, monitor, cancel, logs""")
+                        help="""Command to run:
+                        submit, monitor, cancel, logs, resubmit""")
 
     parser.add_argument("project_config",
                         type=str,
@@ -233,8 +240,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    msg = "Please specify a command: submit, monitor, or cancel"
-    assert args.cmd in ["submit", "monitor", "cancel", "logs"], msg
+    msg = "Please specify a command: submit, monitor, resubmit, or cancel"
+    assert args.cmd in ["submit", "monitor", "cancel", "logs", "resubmit"], msg
 
     # Read in the config file
     config = json.load(open(args.project_config, 'rt'))
@@ -244,6 +251,9 @@ if __name__ == "__main__":
     if args.cmd == "submit":
         # Submit a batch of jobs
         config = submit_jobs(config)
+    elif args.cmd == "resubmit":
+        # Submit a batch of jobs
+        config = submit_jobs(config, force=True)
     elif args.cmd == "monitor":
         # Monitor the progress of a set of jobs
         config = monitor_jobs(config, force_check=args.force_check)
