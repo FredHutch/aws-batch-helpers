@@ -123,7 +123,30 @@ def monitor_jobs(config, force_check=False):
     if status_counts.get("SUCCEEDED", 0) == n_jobs:
         config["status"] = "COMPLETED"
 
+    # Check to see how many files are in the output folder, and what the most recent ones are
+    if config['output_folder'].startswith('s3://'):
+        client = boto3.client('s3')
+        bucket = config['output_folder'][5:].split('/')[0]
+        prefix = config['output_folder'][(5 + len(bucket) + 1):]
+        objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+        if 'Contents' in objs:
+            objs = objs['Contents']
+            # Print the total number of objects in the folder
+            print("\n\nFiles in output folder: {}\n".format(len(objs)))
+            # Sort by datetime
+            objs = sorted(objs, key=get_last_modified, reverse=True)
+            print("\nMost recent files in output folder:\n")
+            for obj in objs[:20]:
+                print("{}\t{}\t{}".format(obj['LastModified'], obj['Size'], obj['Key'].split('/')[-1]))
+            print('\n')
+
     return config
+
+
+def get_last_modified(obj):
+    """Function to help sorting by datetime."""
+    return int(obj['LastModified'].strftime('%s'))
 
 
 def cancel_jobs(config):
