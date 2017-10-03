@@ -65,7 +65,7 @@ def submit_jobs(config):
                     }
             )
         # Save the response, which includes the jobName and jobId (as a dict)
-        config["jobs"].append(r)
+        config["jobs"].append({"jobName": r["jobName"], "jobId": r["jobId"]})
 
     # Set the project status to "SUBMITTED"
     config["status"] = "SUBMITTED"
