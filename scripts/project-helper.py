@@ -75,7 +75,6 @@ def submit_jobs(config, force=False):
         config["jobs"].append({"jobName": r["jobName"], "jobId": r["jobId"]})
 
         print("Submitted {}: {}".format(job_name, r['jobId']))
-        break
 
     # Set the project status to "SUBMITTED"
     config["status"] = "SUBMITTED"
