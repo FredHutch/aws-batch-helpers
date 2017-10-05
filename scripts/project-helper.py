@@ -43,14 +43,14 @@ def submit_jobs(config, force=False):
             print("Project has already been submitted, resubmitting.")
         else:
             print("Project has already been submitted, exiting.")
-            return
+            return config
 
     if "jobs" in config:
         if force:
             print("'jobs' already found in config, resubmitting.")
         else:
             print("'jobs' already found in config, exiting.")
-            return
+            return config
 
     # Set up the list of jobs
     config["jobs"] = []
