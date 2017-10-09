@@ -116,7 +116,12 @@ def monitor_jobs(config, force_check=False):
             s = j['status']
             status_counts[s] = status_counts.get(s, 0) + 1
             if s == "FAILED":
-                failed_jobs.append((j['jobId'], j['statusReason']))
+                # Get the reason for the failure
+                if 'reason' in j['attempts'][-1]['container']:
+                    reason = j['attempts'][-1]['container']['reason']
+                else:
+                    reason = j['statusReason']
+                failed_jobs.append((j['jobId'], reason))
 
     print("Total number of jobs: {}".format(n_jobs))
     print("")
@@ -137,16 +142,36 @@ def monitor_jobs(config, force_check=False):
         client = boto3.client('s3')
         bucket = config['output_folder'][5:].split('/')[0]
         prefix = config['output_folder'][(5 + len(bucket) + 1):]
+
+        # Get all of the objects from S3
+        tot_objs = []
+        # Retrieve in batches of 1,000
         objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
 
-        if 'Contents' in objs:
-            objs = objs['Contents']
+        continue_flag = True
+        while continue_flag:
+            continue_flag = False
+
+            if 'Contents' not in objs:
+                break
+
+            # Add this batch to the list
+            tot_objs.extend(objs['Contents'])
+
+            # Check to see if there are more to fetch
+            if objs['IsTruncated']:
+                continue_flag = True
+                token = objs['NextContinuationToken']
+                objs = client.list_objects_v2(Bucket=bucket,
+                                              ContinuationToken=token)
+
+        if len(tot_objs) > 0:
             # Print the total number of objects in the folder
-            print("\n\nFiles in output folder: {}\n".format(len(objs)))
+            print("\n\nFiles in output folder: {}\n".format(len(tot_objs)))
             # Sort by datetime
-            objs = sorted(objs, key=get_last_modified, reverse=True)
+            tot_objs = sorted(tot_objs, key=get_last_modified, reverse=True)
             print("\nMost recent files in output folder:\n")
-            for obj in objs[:20]:
+            for obj in tot_objs[:20]:
                 print("{}\t{}\t{}".format(obj['LastModified'], obj['Size'], obj['Key'].split('/')[-1]))
             print('\n')
 
