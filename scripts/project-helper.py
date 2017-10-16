@@ -16,7 +16,8 @@ def valid_config(config):
         "db": unicode,
         "output_folder": unicode,
         "queue": unicode,
-        "samples": list
+        "samples": list,
+        "parameters": dict
     }
     for k, v in spec.items():
         if k not in config:
@@ -61,15 +62,19 @@ def submit_jobs(config, force=False):
     for sample_n, sample in enumerate(config["samples"]):
         # Use the parameters from the input file to submit the jobs
         job_name = "{}_{}".format(config["name"], sample_n)
+        parameters = {
+                        "input": sample,
+                        "ref_db": config["db"],
+                        "output_folder": config["output_folder"]
+                     }
+        for k, v in config["parameters"].items():
+            assert k not in parameters, "Cannot repeat key {}".format(k)
+            parameters[k] = v
         r = client.submit_job(
                 jobName=job_name,
                 jobQueue=config["queue"],
                 jobDefinition=config["job_definition"],
-                parameters={
-                    "input": sample,
-                    "ref_db": config["db"],
-                    "output_folder": config["output_folder"]
-                    }
+                parameters=parameters
             )
         # Save the response, which includes the jobName and jobId (as a dict)
         config["jobs"].append({"jobName": r["jobName"], "jobId": r["jobId"]})
