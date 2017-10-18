@@ -168,6 +168,7 @@ def monitor_jobs(config, force_check=False):
                 continue_flag = True
                 token = objs['NextContinuationToken']
                 objs = client.list_objects_v2(Bucket=bucket,
+                                              Prefix=prefix,
                                               ContinuationToken=token)
 
         if len(tot_objs) > 0:
