@@ -26,8 +26,8 @@ project = json.load(open(skel_fp))
 
 # OUTPUT LOCATION
 # The following describes the path where all output files will be placed
-bucket = "fh-pi-fredricks-d"
-prefix = "lab/Sam_Minot/data/{}_diamond_uniref90/".format(project_name)
+bucket = project["output_folder"].split('/')[2]
+prefix = '/'.join(project["output_folder"].split('/')[3:])
 
 
 def aws_s3_ls(bucket, prefix):
