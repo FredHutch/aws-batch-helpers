@@ -210,6 +210,7 @@ def cancel_jobs(config):
     for job_id in id_list:
         print("Cancelling {}".format(job_id))
         client.cancel_job(jobId=job_id, reason=cancel_msg)
+        client.terminate_job(jobId=job_id, reason=cancel_msg)
 
     config["status"] = "CANCELED"
 
