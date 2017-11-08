@@ -18,6 +18,9 @@ skel_fp = sys.argv[1]
 metadata_fp = sys.argv[2]
 project_name = sys.argv[3]
 
+# Number of samples to analyze per process
+n_samples = 20
+
 assert os.path.exists(skel_fp)
 assert os.path.exists(metadata_fp)
 
@@ -25,7 +28,14 @@ assert os.path.exists(metadata_fp)
 project = json.load(open(skel_fp))
 
 # OUTPUT LOCATION
+# Make sure the output base ends with a /
+if project["output_base"].endswith("/") is False:
+    project["output_base"] = project["output_base"] + "/"
 # The following describes the path where all output files will be placed
+project["output_folder"] = "{}{}_{}/".format(project["output_base"],
+                                             project_name,     # Project name
+                                             project["name"])  # Analysis name
+del project["output_base"]
 bucket = project["output_folder"].split('/')[2]
 prefix = '/'.join(project["output_folder"].split('/')[3:])
 
@@ -61,18 +71,12 @@ def aws_s3_ls(bucket, prefix):
     return [d["Key"].split('/')[-1] for d in tot_objs]
 
 
-# Number of samples per process
-n_samples = 20
-
 # Read in the metadata
 df = pd.read_table(metadata_fp, sep=',')
 # Get the list of SRA accessions for each individual sample
+assert "Run_s" in df.columns, "Run_s column not found in CSV"
 sra_accessions = list(df['Run_s'].values)
 sra_accessions = ["sra://" + acc for acc in sra_accessions]
-
-# Format the URL on S3 for the output files
-fp = "s3://{}/{}".format(bucket, prefix)
-project["output_folder"] = fp
 
 # Get the contents of the output folder
 compl = aws_s3_ls(bucket, prefix)
