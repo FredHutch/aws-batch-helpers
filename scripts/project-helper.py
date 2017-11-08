@@ -17,12 +17,18 @@ def valid_config(config):
         "output_folder": unicode,
         "queue": unicode,
         "samples": list,
-        "parameters": dict
+        "parameters": dict,
+        "containerOverrides": dict,
     }
+    optional = ["parameters", "containerOverrides"]
+
     for k, v in spec.items():
         if k not in config:
-            print("{} not found in config file".format(k))
-            return False
+            if k in optional:
+                continue
+            else:
+                print("{} not found in config file".format(k))
+                return False
         msg = "Value {} ({}) not of the correct type: {}".format(config[k], type(config[k]), v)
         if not isinstance(config[k], v):
             print(msg)
@@ -67,15 +73,25 @@ def submit_jobs(config, force=False):
                         "ref_db": config["db"],
                         "output_folder": config["output_folder"]
                      }
-        for k, v in config["parameters"].items():
-            assert k not in parameters, "Cannot repeat key {}".format(k)
-            parameters[k] = v
-        r = client.submit_job(
-                jobName=job_name,
-                jobQueue=config["queue"],
-                jobDefinition=config["job_definition"],
-                parameters=parameters
-            )
+        if "parameters" in config:
+            for k, v in config["parameters"].items():
+                assert k not in parameters, "Cannot repeat key {}".format(k)
+                parameters[k] = v
+        if "containerOverrides" in config:
+            r = client.submit_job(
+                    jobName=job_name,
+                    jobQueue=config["queue"],
+                    jobDefinition=config["job_definition"],
+                    parameters=parameters,
+                    containerOverrides=config["containerOverrides"]
+                )
+        else:
+            r = client.submit_job(
+                    jobName=job_name,
+                    jobQueue=config["queue"],
+                    jobDefinition=config["job_definition"],
+                    parameters=parameters
+                )
         # Save the response, which includes the jobName and jobId (as a dict)
         config["jobs"].append({"jobName": r["jobName"], "jobId": r["jobId"]})
 
