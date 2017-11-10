@@ -51,7 +51,8 @@ def valid_config(config, verbose=False):
 
 def project_status(config, fp, force_check=False):
     """Monitor the status of a set of jobs."""
-    assert "jobs" in config, "No jobs found in config file"
+    if "jobs" not in config:
+        return None
 
     if config["status"] == "COMPLETED":
         if not force_check:
@@ -134,7 +135,8 @@ def print_dashboard(dat, check_all=False):
     output = []
     for fp, config in dat.items():
         status = project_status(config, fp, force_check=check_all)
-        output.append(status)
+        if status is not None:
+            output.append(status)
 
     n_completed = sum([p.get("completed", False) == True for p in output])
     output = [p for p in output if p.get("completed", False) is False]

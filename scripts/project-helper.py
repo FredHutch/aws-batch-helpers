@@ -200,6 +200,79 @@ def monitor_jobs(config, force_check=False):
     return config
 
 
+def refresh_jobs(config, samples_per_worker=20):
+    """Reset a particular config file, removing pending and completed jobs."""
+
+    # Get all of the objects in the output folder
+    # Currently only support S3
+    assert config['output_folder'].startswith('s3://')
+
+    # Check to see how what files are in the output folder
+    client = boto3.client('s3')
+    bucket = config['output_folder'][5:].split('/')[0]
+    prefix = config['output_folder'][(5 + len(bucket) + 1):]
+
+    # Get all of the objects from S3
+    tot_objs = []
+    # Retrieve in batches of 1,000
+    objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+    continue_flag = True
+    while continue_flag:
+        continue_flag = False
+
+        if 'Contents' not in objs:
+            break
+
+        # Add this batch to the list
+        tot_objs.extend(objs['Contents'])
+
+        # Check to see if there are more to fetch
+        if objs['IsTruncated']:
+            continue_flag = True
+            token = objs['NextContinuationToken']
+            objs = client.list_objects_v2(Bucket=bucket,
+                                          Prefix=prefix,
+                                          ContinuationToken=token)
+
+    # Condense down to the filename, without the ".json" or ".gz"
+    file_prefixes = [obj["Key"] for obj in tot_objs]
+    file_prefixes = [path.split('/')[-1].replace(".json", "")
+                     for path in file_prefixes]
+    file_prefixes = [path.split('/')[-1].replace(".gz", "")
+                     for path in file_prefixes]
+    print("Files in output folder: {}".format(len(file_prefixes)))
+
+    # Get the complete list of samples
+    samples = []
+    for sample_string in config["samples"]:
+        for substring in sample_string.split(","):
+            samples.append(substring)
+    print("Samples in project JSON: {}".format(len(samples)))
+
+    # Now remove any samples that have been completed
+    samples = [s for s in samples if s.split("://")[-1] not in file_prefixes]
+    print("Samples remaining to process: {}".format(len(samples)))
+
+    # Repopulate the "samples" list
+    config["samples"] = []
+    while len(samples) > 0:
+        if len(samples) > samples_per_worker:
+            config["samples"].append(",".join(samples[:samples_per_worker]))
+            samples = samples[samples_per_worker:]
+        else:
+            config["samples"].append(",".join(samples))
+            samples = []
+
+    # Delete the existing jobs (if any)
+    if "jobs" in config:
+        del config["jobs"]
+
+    # Set the status as READY
+    config["status"] = "READY"
+
+    return config
+
 def get_last_modified(obj):
     """Function to help sorting by datetime."""
     return int(obj['LastModified'].strftime('%s'))
@@ -279,7 +352,7 @@ if __name__ == "__main__":
     parser.add_argument("cmd",
                         type=str,
                         help="""Command to run:
-                        submit, monitor, cancel, logs, resubmit""")
+                        submit, monitor, cancel, logs, resubmit, or refresh""")
 
     parser.add_argument("project_config",
                         type=str,
@@ -291,8 +364,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    msg = "Please specify a command: submit, monitor, resubmit, or cancel"
-    assert args.cmd in ["submit", "monitor", "cancel", "logs", "resubmit"], msg
+    msg = "Please specify a command: submit, monitor, resubmit, refresh, or cancel"
+    assert args.cmd in ["submit", "monitor", "cancel", "logs", "resubmit", "refresh"], msg
 
     # Read in the config file
     config = json.load(open(args.project_config, 'rt'))
@@ -311,6 +384,8 @@ if __name__ == "__main__":
     elif args.cmd == "cancel":
         # Cancel all of the currently pending jobs
         config = cancel_jobs(config)
+    elif args.cmd == "refresh":
+        config = refresh_jobs(config)
     
     if args.cmd == "logs":
         # Save all of the logs to their own local file
