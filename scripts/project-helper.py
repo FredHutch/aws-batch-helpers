@@ -254,6 +254,11 @@ def refresh_jobs(config, samples_per_worker=20):
     samples = [s for s in samples if s.split("://")[-1] not in file_prefixes]
     print("Samples remaining to process: {}".format(len(samples)))
 
+    # If there are no samples remaining, mark as COMPLETE
+    if len(samples) == 0:
+        config["status"] == "COMPLETE"
+        return config
+
     # Repopulate the "samples" list
     config["samples"] = []
     while len(samples) > 0:
@@ -362,6 +367,11 @@ if __name__ == "__main__":
                         action='store_true',
                         help="""Force check job status for COMPLETED projects""")
 
+    parser.add_argument("--per-worker",
+                        default=20,
+                        type=int,
+                        help="""Number of samples to assign to each worker""")
+
     args = parser.parse_args()
 
     msg = "Please specify a command: submit, monitor, resubmit, refresh, or cancel"
@@ -385,8 +395,8 @@ if __name__ == "__main__":
         # Cancel all of the currently pending jobs
         config = cancel_jobs(config)
     elif args.cmd == "refresh":
-        config = refresh_jobs(config)
-    
+        config = refresh_jobs(config, samples_per_worker=args.per_worker)
+
     if args.cmd == "logs":
         # Save all of the logs to their own local file
         save_all_logs(config)
