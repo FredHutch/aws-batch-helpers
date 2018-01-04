@@ -31,6 +31,10 @@ project = json.load(open(skel_fp))
 # Make sure the output base ends with a /
 if project["output_base"].endswith("/") is False:
     project["output_base"] = project["output_base"] + "/"
+
+# Add the project name
+project["name"] = "{}_{}".format(project["name"], project_name)
+
 # The following describes the path where all output files will be placed
 project["output_folder"] = "{}{}_{}/".format(project["output_base"],
                                              project_name,     # Project name
