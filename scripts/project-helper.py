@@ -69,9 +69,11 @@ def submit_jobs(config, force=False):
         job_name = "{}_{}".format(config["name"], sample_n)
         parameters = {
                         "input": sample,
-                        "ref_db": config["db"],
                         "output_folder": config["output_folder"]
                      }
+        if "db" in config:
+            parameters["ref_db"] = config["db"]
+
         if "parameters" in config:
             for k, v in config["parameters"].items():
                 assert k not in parameters, "Cannot repeat key {}".format(k)
