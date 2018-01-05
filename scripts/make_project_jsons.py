@@ -32,13 +32,14 @@ project = json.load(open(skel_fp))
 if project["output_base"].endswith("/") is False:
     project["output_base"] = project["output_base"] + "/"
 
-# Add the project name
-project["name"] = "{}_{}".format(project["name"], project_name)
-
 # The following describes the path where all output files will be placed
 project["output_folder"] = "{}{}_{}/".format(project["output_base"],
                                              project_name,     # Project name
                                              project["name"])  # Analysis name
+
+# Add the project name to be used for the job names
+project["name"] = "{}_{}".format(project["name"], project_name)
+
 del project["output_base"]
 bucket = project["output_folder"].split('/')[2]
 prefix = '/'.join(project["output_folder"].split('/')[3:])
@@ -78,8 +79,12 @@ def aws_s3_ls(bucket, prefix):
 # Read in the metadata
 df = pd.read_table(metadata_fp, sep=',')
 # Get the list of SRA accessions for each individual sample
-assert "Run_s" in df.columns, "Run_s column not found in CSV"
-sra_accessions = list(df['Run_s'].values)
+sra_accessions = None
+for col_name in ["Run_s", "Run"]:
+    if col_name in df.columns:
+        sra_accessions = list(df[col_name].values)
+
+assert sra_accessions is not None, "No column named Run or Run_s"
 sra_accessions = ["sra://" + acc for acc in sra_accessions]
 
 # Get the contents of the output folder
