@@ -16,7 +16,6 @@ def valid_config(config, verbose=False):
         "name": unicode,
         "description": unicode,
         "job_definition": unicode,
-        "db": unicode,
         "output_folder": unicode,
         "queue": unicode,
         "samples": list,
