@@ -257,7 +257,7 @@ def refresh_jobs(config, samples_per_worker=20):
 
     # If there are no samples remaining, mark as COMPLETE
     if len(samples) == 0:
-        config["status"] == "COMPLETE"
+        config["status"] = "COMPLETED"
         return config
 
     # Repopulate the "samples" list
