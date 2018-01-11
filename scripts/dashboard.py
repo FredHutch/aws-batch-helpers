@@ -164,7 +164,10 @@ if __name__ == "__main__":
         for file in files:
             if file.endswith(".json"):
                 fp = os.path.join(root, file)
-                config = json.load(open(fp))
+                try:
+                    config = json.load(open(fp))
+                except ValueError:
+                    raise Exception("Cannot open {}".format(fp))
                 if valid_config(config):
                     dat[fp] = config
 
