@@ -238,9 +238,9 @@ def refresh_jobs(config, samples_per_worker=20):
 
     # Condense down to the filename, without the ".json" or ".gz"
     file_prefixes = [obj["Key"] for obj in tot_objs]
-    file_prefixes = [path.split('/')[-1].replace(".json", "")
+    file_prefixes = [path.split('/')[-1].replace(".json.gz", "")
                      for path in file_prefixes]
-    file_prefixes = [path.split('/')[-1].replace(".gz", "")
+    file_prefixes = [path.split('/')[-1].replace(".json", "")
                      for path in file_prefixes]
     print("Files in output folder: {}".format(len(file_prefixes)))
 
@@ -252,7 +252,7 @@ def refresh_jobs(config, samples_per_worker=20):
     print("Samples in project JSON: {}".format(len(samples)))
 
     # Now remove any samples that have been completed
-    samples = [s for s in samples if s.split("://")[-1] not in file_prefixes]
+    samples = [s for s in samples if s.split("/")[-1] not in file_prefixes]
     print("Samples remaining to process: {}".format(len(samples)))
 
     # If there are no samples remaining, mark as COMPLETE
