@@ -33,7 +33,7 @@ if project["output_base"].endswith("/") is False:
     project["output_base"] = project["output_base"] + "/"
 
 # The following describes the path where all output files will be placed
-project["output_folder"] = "{}{}_{}/".format(project["output_base"],
+project["output_folder"] = "{}{}/{}/".format(project["output_base"],
                                              project_name,     # Project name
                                              project["name"])  # Analysis name
 
