@@ -18,7 +18,7 @@ def valid_config(config, verbose=False):
         "job_definition": unicode,
         "output_folder": unicode,
         "queue": unicode,
-        "samples": list,
+        "samples": dict,
         "parameters": dict,
         "containerOverrides": dict,
     }
@@ -162,6 +162,8 @@ if __name__ == "__main__":
 
     for root, subdirs, files in os.walk(os.getcwd()):
         for file in files:
+            if file[0] == '_':
+                continue
             if file.endswith(".json"):
                 fp = os.path.join(root, file)
                 try:
