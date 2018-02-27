@@ -1,10 +1,12 @@
 #!/usr/bin/python
 """Submit and monitor the status of projects on AWS Batch."""
 
+import os
 import re
 import json
 import boto3
 import argparse
+import pandas as pd
 
 
 def valid_config(config):
@@ -15,7 +17,7 @@ def valid_config(config):
         "job_definition": unicode,
         "output_folder": unicode,
         "queue": unicode,
-        "samples": list,
+        "samples": dict,
         "parameters": dict,
         "containerOverrides": dict,
     }
@@ -64,11 +66,12 @@ def submit_jobs(config, force=False):
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    for sample_n, sample in enumerate(config["samples"]):
+    for sample_name, file_names in config["samples"].items():
         # Use the parameters from the input file to submit the jobs
-        job_name = "{}_{}".format(config["name"], sample_n)
+        job_name = "{}_{}".format(config["name"], sample_name)
         parameters = {
-                        "input": sample,
+                        "input": "+".join(file_names),
+                        "sample_name": sample_name,
                         "output_folder": config["output_folder"]
                      }
         if "db" in config:
@@ -201,7 +204,7 @@ def monitor_jobs(config, force_check=False):
     return config
 
 
-def refresh_jobs(config, samples_per_worker=20):
+def refresh_jobs(config):
     """Reset a particular config file, removing pending and completed jobs."""
 
     # Get all of the objects in the output folder
@@ -209,66 +212,26 @@ def refresh_jobs(config, samples_per_worker=20):
     assert config['output_folder'].startswith('s3://')
 
     # Check to see how what files are in the output folder
-    client = boto3.client('s3')
     bucket = config['output_folder'][5:].split('/')[0]
     prefix = config['output_folder'][(5 + len(bucket) + 1):]
 
     # Get all of the objects from S3
-    tot_objs = []
-    # Retrieve in batches of 1,000
-    objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+    compl = aws_s3_ls(bucket, prefix)
+    print("Files in output folder: {}".format(len(compl)))
 
-    continue_flag = True
-    while continue_flag:
-        continue_flag = False
-
-        if 'Contents' not in objs:
-            break
-
-        # Add this batch to the list
-        tot_objs.extend(objs['Contents'])
-
-        # Check to see if there are more to fetch
-        if objs['IsTruncated']:
-            continue_flag = True
-            token = objs['NextContinuationToken']
-            objs = client.list_objects_v2(Bucket=bucket,
-                                          Prefix=prefix,
-                                          ContinuationToken=token)
-
-    # Condense down to the filename, without the ".json" or ".gz"
-    file_prefixes = [obj["Key"] for obj in tot_objs]
-    file_prefixes = [path.split('/')[-1].replace(".json.gz", "")
-                     for path in file_prefixes]
-    file_prefixes = [path.split('/')[-1].replace(".json", "")
-                     for path in file_prefixes]
-    print("Files in output folder: {}".format(len(file_prefixes)))
-
-    # Get the complete list of samples
-    samples = []
-    for sample_string in config["samples"]:
-        for substring in sample_string.split(","):
-            samples.append(substring)
-    print("Samples in project JSON: {}".format(len(samples)))
-
-    # Now remove any samples that have been completed
-    samples = [s for s in samples if s.split("/")[-1] not in file_prefixes]
-    print("Samples remaining to process: {}".format(len(samples)))
+    print("Samples in project JSON: {}".format(len(config["samples"])))
+    # Remove the samples that have already been completed
+    config["samples"] = {
+        k: v
+        for k, v in config["samples"].items()
+        if k + ".json.gz" not in compl
+    }
+    print("Samples remaining to process: {}".format(len(config["samples"])))
 
     # If there are no samples remaining, mark as COMPLETE
-    if len(samples) == 0:
+    if len(config["samples"]) == 0:
         config["status"] = "COMPLETED"
         return config
-
-    # Repopulate the "samples" list
-    config["samples"] = []
-    while len(samples) > 0:
-        if len(samples) > samples_per_worker:
-            config["samples"].append(",".join(samples[:samples_per_worker]))
-            samples = samples[samples_per_worker:]
-        else:
-            config["samples"].append(",".join(samples))
-            samples = []
 
     # Delete the existing jobs (if any)
     if "jobs" in config:
@@ -278,6 +241,7 @@ def refresh_jobs(config, samples_per_worker=20):
     config["status"] = "READY"
 
     return config
+
 
 def get_last_modified(obj):
     """Function to help sorting by datetime."""
@@ -326,7 +290,6 @@ def save_all_logs(config):
     job_log_ids = {}  # key is log_id, value is job_name+job_id
 
     # Check the status of each job in batches of 100
-    n_jobs = len(id_list)
     while len(id_list) > 0:
         status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
         if len(id_list) < 100:
@@ -350,6 +313,144 @@ def save_all_logs(config):
                 fo.write(event['message'] + '\n')
 
 
+def add_sra_prefix(s):
+    if '/' in s or ':' in s:
+        return s
+    elif s[1:3] == "RR":
+        return "sra://{}".format(s)
+    else:
+        return s
+
+
+def make_project_from_metadata(project_name, metadata_fp, file_col, sample_col):
+    """Make a project folder from a metadata CSV."""
+    # Load in a metadata table
+    msg = "{} does not exists"
+    assert os.path.exists(metadata_fp), msg.format(metadata_fp)
+    metadata = pd.read_table(metadata_fp, sep=',')
+
+    # All project data goes into a single folder
+    if not os.path.exists(project_name):
+        os.mkdir(project_name)
+
+    # Check to see if another metadata object exists
+    metadata_json = os.path.join(project_name, "metadata.json")
+    msg = "Metadata file already exists: {}".format(metadata_json)
+    assert os.path.exists(metadata_json) is False, msg
+
+    # Make sure that the sample column and file column are present
+    print("Using file column: {}".format(file_col))
+    print("Using sample column: {}".format(sample_col))
+    assert file_col in metadata.columns
+    assert sample_col in metadata.columns
+
+    # Make a new column named "_filepath"
+    metadata["_filepath"] = metadata[file_col].apply(add_sra_prefix)
+
+    # Organize the metadata as a dict of lists, keyed by sample name
+    metadata_dat = {
+        sample_name: sample_df.to_dict(orient="records")
+        for sample_name, sample_df in metadata.groupby(sample_col)
+    }
+
+    # Write out the metadata as a JSON
+    with open(metadata_json, "wt") as fo:
+        json.dump(metadata_dat, fo)
+        print("Wrote metadata to {}".format(metadata_json))
+
+
+def aws_s3_ls(bucket, prefix):
+    """List the contents of an S3 bucket."""
+
+    # Connect to S3
+    client = boto3.client('s3')
+
+    # Get all of the objects from S3
+    tot_objs = []
+    # Retrieve in batches of 1,000
+    objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
+
+    continue_flag = True
+    while continue_flag:
+        continue_flag = False
+
+        if 'Contents' not in objs:
+            break
+
+        # Add this batch to the list
+        tot_objs.extend(objs['Contents'])
+
+        # Check to see if there are more to fetch
+        if objs['IsTruncated']:
+            continue_flag = True
+            token = objs['NextContinuationToken']
+            objs = client.list_objects_v2(Bucket=bucket,
+                                          Prefix=prefix,
+                                          ContinuationToken=token)
+    return [d["Key"].split('/')[-1] for d in tot_objs]
+
+
+def make_config_json(template_fp, project_folder):
+    """Make a analysis config JSON."""
+    project_name = project_folder.rstrip("/").split("/")[-1]
+    metadata_fp = os.path.join(project_folder, "metadata.json")
+    assert os.path.exists(metadata_fp)
+    metadata = json.load(open(metadata_fp, "rt"))
+
+    assert os.path.exists(template_fp)
+
+    # Read in the skeleton for the project definition
+    project = json.load(open(template_fp))
+
+    # OUTPUT LOCATION
+    # Make sure the output base ends with a /
+    if project["output_base"].endswith("/") is False:
+        project["output_base"] = project["output_base"] + "/"
+
+    # The following describes the path where all output files will be placed
+    project["output_folder"] = "{}{}/{}/".format(project["output_base"],
+                                                 project_name,     # Project name
+                                                 project["name"])  # Analysis name
+
+    # Add the project name to be used for the job names
+    project["name"] = "{}_{}".format(project["name"], project_name)
+
+    del project["output_base"]
+    bucket = project["output_folder"].split('/')[2]
+    prefix = '/'.join(project["output_folder"].split('/')[3:])
+
+    samples = {
+        k: [f["_filepath"] for f in files]
+        for k, files in metadata.items()
+    }
+
+    # Get the contents of the output folder
+    compl = aws_s3_ls(bucket, prefix)
+
+    # Remove the samples that have already been completed
+    print("Project: " + project_name)
+    print("Total samples: {}".format(len(samples)))
+    print("Files in output folder: {}".format(len(compl)))
+    samples = {
+        k: v
+        for k, v in samples.items()
+        if k + ".json.gz" not in compl
+    }
+    print("Unanalyzed samples: {}".format(len(samples)))
+
+    # Add the samples to the project config object
+    project['samples'] = samples
+
+    # Write out the config file
+    fp_out = os.path.join(project_folder, '{}.json'.format(project["name"]))
+    with open(fp_out, 'wt') as fo:
+        json.dump(project, fo, indent=4)
+
+    print("Wrote out {}".format(fp_out))
+    print("Analysis can be kicked off with: ")
+    print("project-helper.py submit {}".format(fp_out))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="""
     Submit and monitor the status of projects on AWS Batch.
@@ -358,50 +459,87 @@ if __name__ == "__main__":
     parser.add_argument("cmd",
                         type=str,
                         help="""Command to run:
-                        submit, monitor, cancel, logs, resubmit, or refresh""")
+                        import, create, submit, monitor, cancel, logs, resubmit, or refresh""")
 
-    parser.add_argument("project_config",
+    parser.add_argument("project",
                         type=str,
-                        help="""Project config file, JSON""")
+                        help="""Project name (or path to analysis JSON).""")
+
+    parser.add_argument("--metadata",
+                        type=str,
+                        help="""Metadata (CSV)""")
+
+    parser.add_argument("--template",
+                        type=str,
+                        help="""Analysis template JSON""")
+
+    parser.add_argument("--file-col",
+                        type=str,
+                        help="""Column name for file identifier""")
+
+    parser.add_argument("--sample-col",
+                        type=str,
+                        help="""Column name for sample identifier""")
 
     parser.add_argument("--force-check",
                         action='store_true',
                         help="""Force check job status for COMPLETED projects""")
 
-    parser.add_argument("--per-worker",
-                        default=20,
-                        type=int,
-                        help="""Number of samples to assign to each worker""")
-
     args = parser.parse_args()
 
-    msg = "Please specify a command: submit, monitor, resubmit, refresh, or cancel"
-    assert args.cmd in ["submit", "monitor", "cancel", "logs", "resubmit", "refresh"], msg
+    valid_cmds = [
+        "submit", "monitor", "cancel", "logs",
+        "resubmit", "refresh", "import", "create"
+    ]
+    msg = "Please specify a command: {}".format(", ".join(valid_cmds))
+    assert args.cmd in valid_cmds, msg
 
-    # Read in the config file
-    config = json.load(open(args.project_config, 'rt'))
-    # Make sure that the config file is valid
-    assert valid_config(config)
+    if args.cmd == "import":
+        assert args.metadata is not None, "Please specify metadata"
+        assert args.sample_col is not None, "Please specify sample column"
+        assert args.file_col is not None, "Please specify file column"
 
-    if args.cmd == "submit":
-        # Submit a batch of jobs
-        config = submit_jobs(config)
-    elif args.cmd == "resubmit":
-        # Submit a batch of jobs
-        config = submit_jobs(config, force=True)
-    elif args.cmd == "monitor":
-        # Monitor the progress of a set of jobs
-        config = monitor_jobs(config, force_check=args.force_check)
-    elif args.cmd == "cancel":
-        # Cancel all of the currently pending jobs
-        config = cancel_jobs(config)
-    elif args.cmd == "refresh":
-        config = refresh_jobs(config, samples_per_worker=args.per_worker)
+        make_project_from_metadata(
+            args.project,
+            args.metadata,
+            args.file_col,
+            args.sample_col,
+        )
+    elif args.cmd == "create":
+        assert args.template is not None
+        assert os.path.exists(args.project)
+        assert os.path.exists(os.path.join(args.project, "metadata.json"))
 
-    if args.cmd == "logs":
-        # Save all of the logs to their own local file
-        save_all_logs(config)
+        make_config_json(
+            args.template,
+            args.project)
+
     else:
-        # Update the config file
-        with open(args.project_config, 'wt') as fo:
-            json.dump(config, fo, indent=4)
+
+        # Read in the config file
+        config = json.load(open(args.project, 'rt'))
+        # Make sure that the config file is valid
+        assert valid_config(config)
+
+        if args.cmd == "submit":
+            # Submit a batch of jobs
+            config = submit_jobs(config)
+        elif args.cmd == "resubmit":
+            # Submit a batch of jobs
+            config = submit_jobs(config, force=True)
+        elif args.cmd == "monitor":
+            # Monitor the progress of a set of jobs
+            config = monitor_jobs(config, force_check=args.force_check)
+        elif args.cmd == "cancel":
+            # Cancel all of the currently pending jobs
+            config = cancel_jobs(config)
+        elif args.cmd == "refresh":
+            config = refresh_jobs(config)
+
+        if args.cmd == "logs":
+            # Save all of the logs to their own local file
+            save_all_logs(config)
+        else:
+            # Update the config file
+            with open(args.project, 'wt') as fo:
+                json.dump(config, fo, indent=4)
