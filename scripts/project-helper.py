@@ -70,6 +70,8 @@ def submit_jobs(config, force=False):
     for sample_name, file_names in config["samples"].items():
         # Use the parameters from the input file to submit the jobs
         job_name = "{}_{}".format(config["name"], sample_name)
+        job_name = job_name.replace(".", "_")
+
         parameters = {
                         "input": "+".join(file_names),
                         "sample_name": sample_name,
