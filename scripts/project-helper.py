@@ -28,15 +28,16 @@ def valid_config(config):
             if k in optional:
                 continue
             else:
-                print("{} not found in config file".format(k))
+                print("\n\n{} not found in config file\n\n".format(k))
                 return False
-        msg = "Value {} ({}) not of the correct type: {}".format(config[k], type(config[k]), v)
+        msg = "\n\nValue {} ({}) not of the correct type: {}\n\n".format(
+            config[k], type(config[k]), v)
         if not isinstance(config[k], v):
             print(msg)
             return False
 
     # Make sure that the project name is only alphanumeric with underscores
-    msg = "Project names can only be alphanumeric with underscores"
+    msg = "\n\nProject names can only be alphanumeric with underscores\n\n"
     if not re.match("^[a-zA-Z0-9_]*$", config["name"]):
         print(msg)
         return False
