@@ -222,12 +222,19 @@ def refresh_jobs(config):
     compl = aws_s3_ls(bucket, prefix)
     print("Files in output folder: {}".format(len(compl)))
 
+    # Try to account for some alternate file endings
+    compl = compl + [x.replace(".json.gz", "") for x in compl]
+    compl = compl + [x.replace(".fastq", "") for x in compl]
+    compl = compl + [x.replace(".gz", "") for x in compl]
+    compl = compl + [x.replace(".json", "") for x in compl]
+    compl = set(compl)
+
     print("Samples in project JSON: {}".format(len(config["samples"])))
     # Remove the samples that have already been completed
     config["samples"] = {
         k: v
         for k, v in config["samples"].items()
-        if k + ".json.gz" not in compl
+        if k not in compl
     }
     print("Samples remaining to process: {}".format(len(config["samples"])))
 
