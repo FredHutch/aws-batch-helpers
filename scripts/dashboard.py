@@ -139,6 +139,10 @@ def print_dashboard(dat, check_all=False):
 
     n_completed = sum([p.get("completed", False) == True for p in output])
     output = [p for p in output if p.get("completed", False) is False]
+    if len(output) == 0:
+        print("All projects are completed ({:,})".format(n_completed))
+        return
+
     df = pd.DataFrame(output).fillna(0)
     df.sort_values(by="fp", inplace=True)
     df.set_index("fp", inplace=True)
