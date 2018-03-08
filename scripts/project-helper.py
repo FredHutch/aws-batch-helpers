@@ -286,7 +286,7 @@ def cancel_jobs(config):
     return config
 
 
-def save_all_logs(config):
+def save_all_logs(config, folder):
     """Save all of the logs to their own local file."""
     assert "jobs" in config, "No jobs found in config file"
 
@@ -310,13 +310,21 @@ def save_all_logs(config):
         for j in status['jobs']:
             if 'container' in j and 'logStreamName' in j['container']:
                 # Save the log stream name
-                fp = "{}.{}.{}.log".format(j['status'], j['jobName'], j['jobId'])
+                fp = "{}/{}.{}.{}.log".format(
+                    folder,
+                    j['status'],
+                    j['jobName'],
+                    j['jobId']
+                )
                 job_log_ids[j['container']['logStreamName']] = fp
 
     # Now get all of the logs
     client = boto3.client('logs')
     for log_id, fp in job_log_ids.items():
-        response = client.get_log_events(logGroupName='/aws/batch/job', logStreamName=log_id)
+        try:
+            response = client.get_log_events(logGroupName='/aws/batch/job', logStreamName=log_id)
+        except:
+            continue
         print("Writing to " + fp)
         with open(fp, 'wt') as fo:
             for event in response['events']:
@@ -338,10 +346,6 @@ def make_project_from_metadata(project_name, metadata_fp, file_col, sample_col):
     msg = "{} does not exists"
     assert os.path.exists(metadata_fp), msg.format(metadata_fp)
     metadata = pd.read_table(metadata_fp, sep=',')
-
-    # All project data goes into a single folder
-    if not os.path.exists(project_name):
-        os.mkdir(project_name)
 
     # Check to see if another metadata object exists
     metadata_json = os.path.join(project_name, "metadata.json")
@@ -548,7 +552,18 @@ if __name__ == "__main__":
 
         if args.cmd == "logs":
             # Save all of the logs to their own local file
-            save_all_logs(config)
+            # Put the folder in the same directory as the config file
+            if '/' not in args.project:
+                log_folder = "logs"
+            else:
+                log_folder = '/'.join(
+                    args.project.split("/")[:-1]
+                ) + "/logs"
+
+            if not os.path.exists(log_folder):
+                os.mkdir(log_folder)
+
+            save_all_logs(config, log_folder)
         else:
             # Update the config file
             with open(args.project, 'wt') as fo:
