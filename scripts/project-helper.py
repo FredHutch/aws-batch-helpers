@@ -367,6 +367,10 @@ def make_project_from_metadata(project_name, metadata_fp, file_col, sample_col):
         for sample_name, sample_df in metadata.groupby(sample_col)
     }
 
+    # Make a folder if it doesn't exist
+    if not os.path.exists(project_name):
+        os.mkdir(project_name)
+
     # Write out the metadata as a JSON
     with open(metadata_json, "wt") as fo:
         json.dump(metadata_dat, fo)
