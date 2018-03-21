@@ -45,21 +45,15 @@ def valid_config(config):
     return True
 
 
-def submit_jobs(config, force=False):
+def submit_jobs(config):
     """Submit a set of jobs."""
     if config.get('status') in ["SUBMITTED", "COMPLETED", "CANCELED"]:
-        if force:
-            print("Project has already been submitted, resubmitting.")
-        else:
-            print("Project has already been submitted, exiting.")
-            return config
+        print("Project has already been submitted, exiting.")
+        return config
 
     if "jobs" in config:
-        if force:
-            print("'jobs' already found in config, resubmitting.")
-        else:
-            print("'jobs' already found in config, exiting.")
-            return config
+        print("'jobs' already found in config, exiting.")
+        return config
 
     # Set up the list of jobs
     config["jobs"] = []
@@ -108,6 +102,54 @@ def submit_jobs(config, force=False):
     config["status"] = "SUBMITTED"
 
     # Return the config object, which now includes the job information and the status
+    return config
+
+
+def resubmit_jobs(config):
+    """Resubmit any failed jobs in the project."""
+    if "jobs" not in config:
+        print("'jobs' not found in config, exiting.")
+        return config
+
+    # Set up the connection to Batch with boto
+    client = boto3.client('batch')
+
+    # Get the description of all jobs
+    id_list = [j["jobId"] for j in config["jobs"]]
+
+    # Key job status by jobId
+    all_status = {}
+    while len(id_list) > 0:
+        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
+        if len(id_list) < 100:
+            id_list = []
+        else:
+            id_list = id_list[100:]
+
+        for j in status['jobs']:
+            all_status[j["jobId"]] = j
+
+    # Now go through and resubmit any failed jobs
+    n_resubmitted = 0
+    for ix, job in enumerate(config["jobs"]):
+        if all_status[job["jobId"]]["status"] != "FAILED":
+            continue
+        print("Resubmitting " + job["jobId"])
+        r = client.submit_job(
+            jobName=job["jobName"],
+            jobQueue=config["queue"],
+            jobDefinition=config["job_definition"],
+            parameters=all_status[job["jobId"]]["parameters"],
+            containerOverrides={
+                "vcpus": all_status[job["jobId"]]["container"]["vcpus"],
+                "memory": all_status[job["jobId"]]["container"]["memory"],
+                "command": all_status[job["jobId"]]["container"]["command"]
+            }
+        )
+        config["jobs"][ix]["jobId"] = r["jobId"]
+        n_resubmitted += 1
+
+    print("Resubmitted {:,} failed jobs".format(n_resubmitted))
     return config
 
 
@@ -576,8 +618,8 @@ if __name__ == "__main__":
             # Submit a batch of jobs
             config = submit_jobs(config)
         elif args.cmd == "resubmit":
-            # Submit a batch of jobs
-            config = submit_jobs(config, force=True)
+            # Requeue any failed jobs
+            config = resubmit_jobs(config)
         elif args.cmd == "monitor":
             # Monitor the progress of a set of jobs
             config = monitor_jobs(config, force_check=args.force_check)
