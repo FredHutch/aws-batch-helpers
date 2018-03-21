@@ -258,7 +258,7 @@ def get_last_modified(obj):
     return int(obj['LastModified'].strftime('%s'))
 
 
-def cancel_jobs(config):
+def cancel_jobs(config, status=None):
     """Cancel all of the currently pending jobs."""
     assert "jobs" in config, "No jobs found in config file"
 
@@ -275,6 +275,18 @@ def cancel_jobs(config):
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
+    # If a status is specified, check the status of the jobs
+    if status is not None:
+        job_status = get_job_status(id_list, client)
+
+    if status is not None:
+        id_list = [job_id for job_id in id_list if job_status[job_id] == status]
+        if len(id_list) == 0:
+            print("No jobs found with the status " + status)
+            return config
+        else:
+            print("Number of jobs with status {}: {:,}".format(status, len(id_list)))
+
     # Cancel jobs
     for job_id in id_list:
         print("Cancelling {}".format(job_id))
@@ -284,6 +296,22 @@ def cancel_jobs(config):
     config["status"] = "CANCELED"
 
     return config
+
+
+def get_job_status(id_list, client):
+    job_status = {}
+
+    # Check the status of each job in batches of 100
+    while len(id_list) > 0:
+        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
+        if len(id_list) < 100:
+            id_list = []
+        else:
+            id_list = id_list[100:]
+
+        for j in status['jobs']:
+            job_status[j["jobId"]] = j.get("status")
+    return job_status
 
 
 def save_all_logs(config, folder):
@@ -499,6 +527,11 @@ if __name__ == "__main__":
                         type=str,
                         help="""Column name for sample identifier""")
 
+    parser.add_argument("--status",
+                        type=str,
+                        default=None,
+                        help="""If specified, only cancel jobs with this status (e.g. RUNNABLE)""")
+
     parser.add_argument("--force-check",
                         action='store_true',
                         help="""Force check job status for COMPLETED projects""")
@@ -550,7 +583,7 @@ if __name__ == "__main__":
             config = monitor_jobs(config, force_check=args.force_check)
         elif args.cmd == "cancel":
             # Cancel all of the currently pending jobs
-            config = cancel_jobs(config)
+            config = cancel_jobs(config, status=args.status)
         elif args.cmd == "refresh":
             config = refresh_jobs(config)
 
