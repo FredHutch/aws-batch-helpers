@@ -132,7 +132,7 @@ def resubmit_jobs(config):
     # Now go through and resubmit any failed jobs
     n_resubmitted = 0
     for ix, job in enumerate(config["jobs"]):
-        if all_status[job["jobId"]]["status"] != "FAILED":
+        if all_status.get(job["jobId"], {}).get("status") != "FAILED":
             continue
         print("Resubmitting " + job["jobId"])
         r = client.submit_job(
