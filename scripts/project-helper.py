@@ -322,7 +322,7 @@ def cancel_jobs(config, status=None):
         job_status = get_job_status(id_list, client)
 
     if status is not None:
-        id_list = [job_id for job_id in id_list if job_status[job_id] == status]
+        id_list = [job_id for job_id in id_list if job_status.get(job_id) == status]
         if len(id_list) == 0:
             print("No jobs found with the status " + status)
             return config
