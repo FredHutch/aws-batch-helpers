@@ -340,7 +340,7 @@ def get_workflow_status(fp, force_check=False):
 
     if config["status"] == "COMPLETED":
         if not force_check:
-            return {"fp": fp, "completed": 1}
+            return {"COMPLETED": len(config["jobs"])}
 
     # Set up a connection to S3 to check for output files
     s3_contents = S3FolderContents()
@@ -393,7 +393,7 @@ def get_workflow_status(fp, force_check=False):
         config["status"] = "COMPLETED"
 
     # Save the config
-    with open("fp", "wt") as f:
+    with open(fp, "wt") as f:
         json.dump(config, f, indent=4)
 
     # Return the status status_counts
