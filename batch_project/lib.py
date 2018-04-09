@@ -90,6 +90,9 @@ def submit_workflow(workflow_fp):
     client = boto3.client('batch')
 
     for sample_info in config["samples"]:
+        if "job_ids" not in sample_info:
+            sample_info["job_ids"] = []
+
         # Set the last job_id for sequential jobs
         last_job_id = []
         for analysis_ix, analysis_config in enumerate(config["analyses"]):
@@ -113,6 +116,7 @@ def submit_workflow(workflow_fp):
                     "job_status": "COMPLETED",
                     "analysis_ix": analysis_ix
                 })
+                sample_info["job_ids"].append(None)
             else:
                 # Set up the job and submit it
 
@@ -160,6 +164,7 @@ def submit_workflow(workflow_fp):
                     "job_status": "SUBMITTED",
                     "analysis_ix": analysis_ix
                 })
+                sample_info["job_ids"].append(r["jobId"])
 
                 print("Submitted {}: {}".format(job_name, r['jobId']))
 
@@ -187,44 +192,18 @@ def resubmit_failed_jobs(workflow_fp):
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    # Get the description of all jobs
-    id_list = [j["jobId"] for j in config["jobs"] if "jobId" in j]
-
-    # Key job status by jobId
-    all_status = {}
-    while len(id_list) > 0:
-        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
-        if len(id_list) < 100:
-            id_list = []
-        else:
-            id_list = id_list[100:]
-
-        for j in status['jobs']:
-            all_status[j["jobId"]] = j
-
-    # Now go through and resubmit any failed jobs
+    # Go through and check each of the jobs
     n_resubmitted = 0
-    for ix, job in enumerate(config["jobs"]):
-        if all_status.get(job["jobId"], {}).get("status") != "FAILED":
+    for j in config["jobs"]:
+        if j["job_status"] != "FAILED":
             continue
+        # Compile the job params based on the workflow config
 
-        print("Resubmitting " + job["jobId"])
-        r = client.submit_job(
-            jobName=job["jobName"],
-            jobQueue=config["queue"],
-            jobDefinition=config["job_definition"],
-            parameters=all_status[job["jobId"]]["parameters"],
-            containerOverrides={
-                "vcpus": all_status[job["jobId"]]["container"]["vcpus"],
-                "memory": all_status[job["jobId"]]["container"]["memory"],
-                "command": all_status[job["jobId"]]["container"]["command"]
-            }
-        )
-        config["jobs"][ix]["jobId"] = r["jobId"]
         n_resubmitted += 1
 
     print("Resubmitted {:,} failed jobs".format(n_resubmitted))
-    return config
+    with open(workflow_fp, "wt") as f:
+        json.dump(config, f, indent=4)
 
 
 def cancel_workflow_jobs(workflow_fp, status=None):
@@ -246,15 +225,14 @@ def cancel_workflow_jobs(workflow_fp, status=None):
 
     # Cancel jobs
     for j in config["jobs"]:
+        if "jobId" not in j:
+            continue
         if status is None or status == j["job_status"]:
-            print("Cancelling {}".format(j["jobId"]))
-            if j["job_status"] in ["SUBMITTED", "PENDING", "RUNNABLE"]:
+            if j["job_status"] not in ["SUCCEEDED", "FAILED", "CANCELED"]:
+                print("Cancelling {}".format(j["jobId"]))
                 client.cancel_job(jobId=j["jobId"], reason=cancel_msg)
-            elif j["job_status"] in ["STARTING", "RUNNING"]:
                 client.terminate_job(jobId=j["jobId"], reason=cancel_msg)
-            else:
-                continue
-            j["job_status"] = "CANCELED"
+                j["job_status"] = "CANCELED"
 
     config["status"] = "CANCELED"
 
