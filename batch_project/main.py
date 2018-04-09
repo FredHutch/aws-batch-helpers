@@ -5,7 +5,7 @@ import os
 import sys
 import json
 import argparse
-import tabulate
+from tabulate import tabulate
 import pandas as pd
 from batch_project.lib import submit_workflow, get_workflow_status
 from batch_project.lib import cancel_workflow_jobs, save_workflow_logs
@@ -18,6 +18,7 @@ def dashboard():
     # Walk through all of the projects in the currect directory
     dat = {}  # Key by path
 
+    n_completed = 0
     for root, subdirs, files in os.walk(os.getcwd()):
         for file in files:
             if file[0] == '_':
@@ -25,33 +26,24 @@ def dashboard():
             if file.endswith(".json"):
                 fp = os.path.join(root, file)
                 try:
-                    config = json.load(open(fp))
+                    config = json.load(open(fp, "rt"))
                 except ValueError:
                     raise Exception("Cannot open {}".format(fp))
-                if valid_workflow(config):
-                    dat[fp] = config
+                if valid_workflow(config, verbose=False):
+                    if config["status"] == "COMPLETED":
+                        n_completed += 1
+                    else:
+                        dat[fp] = get_workflow_status(fp)
 
-    # Print a summary of all project
-    output = []
-    for fp, config in dat.items():
-        status = get_workflow_status(fp)
-        if status is not None:
-            output.append(status)
-
-    n_completed = sum([p.get("completed", False) == True for p in output])
-    output = [p for p in output if p.get("completed", False) is False]
-    if len(output) == 0:
+    if len(dat) == 0:
         print("All projects are completed ({:,})".format(n_completed))
         return
 
-    df = pd.DataFrame(output).fillna(0)
-    df.sort_values(by="fp", inplace=True)
-    df.set_index("fp", inplace=True)
+    df = pd.DataFrame(dat).fillna(0).T
+    df = df.reset_index().sort_values(by="index").set_index("index")
     print(tabulate(df, headers="keys"))
 
     print("\nCompleted projects: {}".format(n_completed))
-
-    pass
 
 
 def main():

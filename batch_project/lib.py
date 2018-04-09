@@ -8,13 +8,19 @@ import pandas as pd
 from collections import defaultdict
 
 
-def valid_workflow(config):
+def valid_workflow(config, verbose=True):
     """Make sure that the config object is valid."""
 
-    assert isinstance(config, dict), "Workflow must be a dict"
+    if isinstance(config, dict) is False:
+        if verbose:
+            print("Workflow must be a dict")
+            return False
 
     for k in ["workflow_name", "project_name", "analyses"]:
-        assert k in config, "Workflow must have " + k
+        if k not in config:
+            if verbose:
+                print("Workflow must have " + k)
+            return False
 
     analysis_spec = {
         "job_definition": str,
@@ -44,7 +50,8 @@ def valid_workflow(config):
                 return False
         # Outputs must be S3 paths
         for output in analysis["outputs"]:
-            assert output.startswith("s3://")
+            if output.startswith("s3://") is False:
+                return False
 
     # Make sure that the project name is only alphanumeric with underscores
     msg = "\n\n{} names can only be alphanumeric with underscores\n\n"
@@ -181,7 +188,7 @@ def resubmit_failed_jobs(workflow_fp):
     client = boto3.client('batch')
 
     # Get the description of all jobs
-    id_list = [j["jobId"] for j in config["jobs"]]
+    id_list = [j["jobId"] for j in config["jobs"] if "jobId" in j]
 
     # Key job status by jobId
     all_status = {}
@@ -220,96 +227,6 @@ def resubmit_failed_jobs(workflow_fp):
     return config
 
 
-def monitor_jobs(workflow_fp, force_check=False):
-    """Monitor the status of a set of jobs."""
-
-    config = json.load(open(workflow_fp))
-    assert valid_workflow(config)
-
-    assert "jobs" in config, "No jobs found in config file"
-
-    if config["status"] == "COMPLETED":
-        print("Project status is COMPLETED")
-        if not force_check:
-            print("Exiting, use --force-check to force check job status.")
-    # Get the list of IDs
-    id_list = [j["jobId"] for j in config["jobs"]]
-
-    # Set up the connection to Batch with boto
-    client = boto3.client('batch')
-
-    # Count up the number of jobs by status
-    status_counts = {}
-
-    # Keep track of the jobs that have failed
-    failed_jobs = []
-
-    # Check the status of each job in batches of 100
-    n_jobs = len(id_list)
-    while len(id_list) > 0:
-        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
-        if len(id_list) < 100:
-            id_list = []
-        else:
-            id_list = id_list[100:]
-
-        for j in status['jobs']:
-            s = j['status']
-            status_counts[s] = status_counts.get(s, 0) + 1
-            if s == "FAILED":
-                # Get the reason for the failure
-                if 'reason' in j['attempts'][-1]['container']:
-                    reason = j['attempts'][-1]['container']['reason']
-                else:
-                    reason = j['statusReason']
-                failed_jobs.append((j['jobId'], reason))
-
-    print("Total number of jobs: {}".format(n_jobs))
-    print("")
-    for k, v in status_counts.items():
-        print("\t{}:\t{}".format(k, v))
-
-    if len(failed_jobs) > 0:
-        print("\n\nFAILED:\n")
-        for f in failed_jobs:
-            print(f)
-
-    # Check to see if the project is completed
-    if status_counts.get("SUCCEEDED", 0) == n_jobs:
-        config["status"] = "COMPLETED"
-
-    # Check to see how many files are in the output folder, and what the most recent ones are
-    if config['output_folder'].startswith('s3://'):
-        client = boto3.client('s3')
-        bucket = config['output_folder'][5:].split('/')[0]
-        prefix = config['output_folder'][(5 + len(bucket) + 1):]
-
-        # Get all of the objects from S3
-        tot_objs = []
-        # Retrieve in batches of 1,000
-        objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-        continue_flag = True
-        while continue_flag:
-            continue_flag = False
-
-            if 'Contents' not in objs:
-                break
-
-            # Add this batch to the list
-            tot_objs.extend(objs['Contents'])
-
-            # Check to see if there are more to fetch
-            if objs['IsTruncated']:
-                continue_flag = True
-                token = objs['NextContinuationToken']
-                objs = client.list_objects_v2(Bucket=bucket,
-                                              Prefix=prefix,
-                                              ContinuationToken=token)
-
-    return config
-
-
 def cancel_workflow_jobs(workflow_fp, status=None):
     """Cancel all of the currently pending jobs."""
     get_workflow_status(workflow_fp)
@@ -345,31 +262,19 @@ def cancel_workflow_jobs(workflow_fp, status=None):
         json.dump(config, f, indent=4)
 
 
-def get_job_status(id_list, client):
-    job_status = {}
-
-    # Check the status of each job in batches of 100
-    while len(id_list) > 0:
-        status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
-        if len(id_list) < 100:
-            id_list = []
-        else:
-            id_list = id_list[100:]
-
-        for j in status['jobs']:
-            job_status[j["jobId"]] = j.get("status")
-    return job_status
-
-
 def save_workflow_logs(fp):
     """Save all of the logs to their own local file."""
     config = json.load(open(fp, "rt"))
     folder = config["project_name"]
     assert os.path.exists(folder), "project folder does not exist"
+
+    if os.path.exists(os.path.join(folder, "logs")) is False:
+        os.mkdir(os.path.join(folder, "logs"))
+
     assert "jobs" in config, "No jobs found in config file"
 
     # Get the list of IDs
-    id_list = [j["jobId"] for j in config["jobs"]]
+    id_list = [j["jobId"] for j in config["jobs"] if "jobId" in j]
 
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
@@ -388,7 +293,7 @@ def save_workflow_logs(fp):
         for j in status['jobs']:
             if 'container' in j and 'logStreamName' in j['container']:
                 # Save the log stream name
-                fp = "{}/{}.{}.{}.log".format(
+                fp = "{}/logs/{}.{}.{}.log".format(
                     folder,
                     j['status'],
                     j['jobName'],
@@ -457,7 +362,7 @@ def get_workflow_status(fp, force_check=False):
     
     # Add back to the list of jobs
     for j in config["jobs"]:
-        if j["jobId"] in new_job_status:
+        if j.get("jobId") in new_job_status:
             j["job_status"] = new_job_status[j["jobId"]]
 
     # Count the job statuses
