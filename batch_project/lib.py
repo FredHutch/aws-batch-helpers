@@ -361,8 +361,11 @@ def get_job_status(id_list, client):
     return job_status
 
 
-def save_workflow_logs(config, folder):
+def save_workflow_logs(fp):
     """Save all of the logs to their own local file."""
+    config = json.load(open(fp, "rt"))
+    folder = config["project_name"]
+    assert os.path.exists(folder), "project folder does not exist"
     assert "jobs" in config, "No jobs found in config file"
 
     # Get the list of IDs
@@ -408,23 +411,40 @@ def save_workflow_logs(config, folder):
 
 def get_workflow_status(fp, force_check=False):
     """Monitor the status of a set of jobs."""
-    if "jobs" not in config:
-        return None
+    config = json.load(open(fp, "rt"))
+    assert valid_workflow(config)
+
+    assert "jobs" in config, "No jobs in workflow file"
 
     if config["status"] == "COMPLETED":
         if not force_check:
             return {"fp": fp, "completed": 1}
+
+    # Set up a connection to S3 to check for output files
+    s3_contents = S3FolderContents()
+
+    # Mark jobs as COMPLETED if the outputs exist
+    for j in config["jobs"]:
+        if j["job_status"] == "COMPLETED":
+            continue
+        if all([
+            s3_contents.exists(fp)
+            for fp in j["outputs"]
+        ]):
+            j["job_status"] = "COMPLETED"
     # Get the list of IDs
-    id_list = [j["jobId"] for j in config["jobs"]]
+    id_list = [
+        j["jobId"] for j in config["jobs"]
+        if j["job_status"] != "COMPLETED"
+    ]
 
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
     # Count up the number of jobs by status
-    status_counts = {"fp": fp}
+    new_job_status = {}
 
     # Check the status of each job in batches of 100
-    n_jobs = len(id_list)
     while len(id_list) > 0:
         status = client.describe_jobs(jobs=id_list[:min(len(id_list), 100)])
         if len(id_list) < 100:
@@ -433,48 +453,28 @@ def get_workflow_status(fp, force_check=False):
             id_list = id_list[100:]
 
         for j in status['jobs']:
-            s = j['status']
-            status_counts[s] = status_counts.get(s, 0) + 1
+            new_job_status[j["jobId"]] = j['status']
+    
+    # Add back to the list of jobs
+    for j in config["jobs"]:
+        if j["jobId"] in new_job_status:
+            j["job_status"] = new_job_status[j["jobId"]]
+
+    # Count the job statuses
+    status_counts = defaultdict(int)
+    for j in config["jobs"]:
+        status_counts[j["job_status"]] += 1
 
     # Check to see if the project is completed
-    if status_counts.get("SUCCEEDED", 0) == n_jobs:
+    if status_counts.get("SUCCEEDED", 0) == len(config["jobs"]):
         # Set this job as COMPLETED
         config["status"] = "COMPLETED"
-        with open(fp, "wt") as fo:
-            json.dump(config, fo)
-        return {"fp": fp, "completed": 1}
 
-    # Check to see how many files are in the output folder, and what the most recent ones are
-    if config['output_folder'].startswith('s3://'):
-        client = boto3.client('s3')
-        bucket = config['output_folder'][5:].split('/')[0]
-        prefix = config['output_folder'][(5 + len(bucket) + 1):]
+    # Save the config
+    with open("fp", "wt") as f:
+        json.dump(config, f, indent=4)
 
-        # Get all of the objects from S3
-        tot_objs = []
-        # Retrieve in batches of 1,000
-        objs = client.list_objects_v2(Bucket=bucket, Prefix=prefix)
-
-        continue_flag = True
-        while continue_flag:
-            continue_flag = False
-
-            if 'Contents' not in objs:
-                break
-
-            # Add this batch to the list
-            tot_objs.extend(objs['Contents'])
-
-            # Check to see if there are more to fetch
-            if objs['IsTruncated']:
-                continue_flag = True
-                token = objs['NextContinuationToken']
-                objs = client.list_objects_v2(Bucket=bucket,
-                                              Prefix=prefix,
-                                              ContinuationToken=token)
-
-    status_counts["files_in_output"] = len(tot_objs)
-
+    # Return the status status_counts
     return status_counts
     
 
