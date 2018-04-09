@@ -85,7 +85,7 @@ def submit_workflow(workflow_fp):
     for sample_info in config["samples"]:
         # Set the last job_id for sequential jobs
         last_job_id = []
-        for analysis_config in config["analyses"]:
+        for analysis_ix, analysis_config in enumerate(config["analyses"]):
             # Fill in the values for the output paths
             sample_outputs = [
                 output_template.format(
@@ -103,7 +103,8 @@ def submit_workflow(workflow_fp):
                     "outputs": sample_outputs,
                     "sample": sample_info["_sample"],
                     "job_definition": analysis_config["job_definition"],
-                    "job_status": "COMPLETED"
+                    "job_status": "COMPLETED",
+                    "analysis_ix": analysis_ix
                 })
             else:
                 # Set up the job and submit it
@@ -149,7 +150,8 @@ def submit_workflow(workflow_fp):
                     "outputs": sample_outputs,
                     "sample": sample_info["_sample"],
                     "job_definition": analysis_config["job_definition"],
-                    "job_status": "SUBMITTED"
+                    "job_status": "SUBMITTED",
+                    "analysis_ix": analysis_ix
                 })
 
                 print("Submitted {}: {}".format(job_name, r['jobId']))
@@ -165,7 +167,10 @@ def submit_workflow(workflow_fp):
 def resubmit_failed_jobs(workflow_fp):
     """Resubmit any failed jobs in the project."""
 
-    config = json.load(open(workflow_fp))
+    # Check the status of the jobs
+    get_workflow_status(workflow_fp)
+
+    config = json.load(open(workflow_fp, "rt"))
     assert valid_workflow(config)
 
     if "jobs" not in config:
@@ -307,42 +312,37 @@ def monitor_jobs(workflow_fp, force_check=False):
 
 def cancel_workflow_jobs(workflow_fp, status=None):
     """Cancel all of the currently pending jobs."""
+    get_workflow_status(workflow_fp)
+
+    config = json.load(open(workflow_fp, "rt"))
     assert "jobs" in config, "No jobs found in config file"
 
     # Prompt the user for confirmation
-    response = raw_input("Are you sure you want to cancel these jobs? (Y/N): ")
+    response = input("Are you sure you want to cancel these jobs? (Y/N): ")
     assert response == "Y", "Do not cancel without confirmation"
 
     # Get a message to submit as justfication for the failure
-    cancel_msg = raw_input("What message should describe these cancellations?\n")
-
-    # Get the list of IDs
-    id_list = [j["jobId"] for j in config["jobs"]]
+    cancel_msg = input("What message should describe these cancellations?\n")
 
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    # If a status is specified, check the status of the jobs
-    if status is not None:
-        job_status = get_job_status(id_list, client)
-
-    if status is not None:
-        id_list = [job_id for job_id in id_list if job_status.get(job_id) == status]
-        if len(id_list) == 0:
-            print("No jobs found with the status " + status)
-            return config
-        else:
-            print("Number of jobs with status {}: {:,}".format(status, len(id_list)))
-
     # Cancel jobs
-    for job_id in id_list:
-        print("Cancelling {}".format(job_id))
-        client.cancel_job(jobId=job_id, reason=cancel_msg)
-        client.terminate_job(jobId=job_id, reason=cancel_msg)
+    for j in config["jobs"]:
+        if status is None or status == j["job_status"]:
+            print("Cancelling {}".format(j["jobId"]))
+            if j["job_status"] in ["SUBMITTED", "PENDING", "RUNNABLE"]:
+                client.cancel_job(jobId=j["jobId"], reason=cancel_msg)
+            elif j["job_status"] in ["STARTING", "RUNNING"]:
+                client.terminate_job(jobId=j["jobId"], reason=cancel_msg)
+            else:
+                continue
+            j["job_status"] = "CANCELED"
 
     config["status"] = "CANCELED"
 
-    return config
+    with open(workflow_fp, "wt") as f:
+        json.dump(config, f, indent=4)
 
 
 def get_job_status(id_list, client):
