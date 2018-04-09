@@ -106,6 +106,14 @@ To submit a workflow for analysis on AWS Batch, execute the command:
 batch_project submit <project_name>/<workflow_name>.json
 ```
 
+#### Resubmitting failed jobs
+
+To resubmit a set of failed jobs (possibly with different resource requests), execute the command:
+
+```
+batch_project submit <project_name>/<workflow_name>.json
+```
+
 #### Monitoring job status
 
 To check on the status of the jobs in a previously executed workflow, execute the command:
