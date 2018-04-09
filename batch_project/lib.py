@@ -185,21 +185,60 @@ def resubmit_failed_jobs(workflow_fp):
     config = json.load(open(workflow_fp, "rt"))
     assert valid_workflow(config)
 
-    if "jobs" not in config:
-        print("'jobs' not found in config, exiting.")
-        return config
+    assert "jobs" in config, "'jobs' not found in config, exiting."
 
     # Set up the connection to Batch with boto
     client = boto3.client('batch')
 
-    # Go through and check each of the jobs
-    n_resubmitted = 0
-    for j in config["jobs"]:
-        if j["job_status"] != "FAILED":
-            continue
-        # Compile the job params based on the workflow config
+    # Index the jobs by their ID
+    jobs = {
+        j["jobId"]: j
+        for j in config["jobs"]
+        if "jobId" in j
+    }
 
-        n_resubmitted += 1
+    n_resubmitted = 0
+    
+    for sample_info in config["samples"]:
+        last_job_id = []
+        for analysis_ix, job_id in enumerate(sample_info["job_ids"]):
+            if job_id is None:
+                continue
+            assert job_id in jobs
+            if jobs[job_id]["job_status"] != "FAILED":
+                continue
+
+            analysis_config = config["analyses"][analysis_ix]
+
+            parameters = {
+                k: v.format(
+                    **sample_info,
+                    **config
+                )
+                for k, v in analysis_config["parameters"].items()
+            }
+
+            r = client.submit_job(
+                jobName=jobs[job_id]["jobName"],
+                jobQueue=analysis_config["queue"],
+                jobDefinition=analysis_config["job_definition"],
+                parameters=parameters,
+                containerOverrides=analysis_config.get(
+                    "containerOverrides", {}),
+                dependsOn=last_job_id,
+                timeout={"attemptDurationSeconds": analysis_config.get(
+                    "timeout", 21600)}
+            )
+
+            # Set the last job id to chain sequential tasks
+            last_job_id = [
+                {
+                    "jobId": r["jobId"],
+                    "type": "SEQUENTIAL"
+                }
+            ]
+
+            n_resubmitted += 1
 
     print("Resubmitted {:,} failed jobs".format(n_resubmitted))
     with open(workflow_fp, "wt") as f:
