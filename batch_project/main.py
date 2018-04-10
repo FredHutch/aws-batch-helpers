@@ -32,7 +32,7 @@ def clear_queue():
         parser.print_help()
         return
 
-    args = parser.parse_args(sys.argv[1:2])
+    args = parser.parse_args()
 
     # Connect to AWS Batch
     client = boto3.client("batch")
@@ -62,9 +62,17 @@ def clear_queue():
             )
             jobs.extend(r["jobSummaryList"])
 
+    # Subset to jobs with a given status
+    jobs = [
+        j for j in jobs if j["status"] in job_status
+    ]
+
     print("Number of jobs to clear from {}: {:,}".format(
         args.queue_name, len(jobs)
     ))
+    if len(jobs) == 0:
+        return
+
     # Prompt the user for confirmation
     response = input("Are you sure you want to cancel these jobs? (Y/N): ")
     assert response == "Y", "Do not cancel without confirmation"
@@ -73,11 +81,10 @@ def clear_queue():
     cancel_msg = input("What message should describe these cancellations?\n")
 
     for j in jobs:
-        if j["job_status"] not in ["SUCCEEDED", "FAILED", "CANCELED"]:
+        if j["status"] not in ["SUCCEEDED", "FAILED", "CANCELED"]:
             print("Cancelling {}".format(j["jobId"]))
             client.cancel_job(jobId=j["jobId"], reason=cancel_msg)
             client.terminate_job(jobId=j["jobId"], reason=cancel_msg)
-            j["job_status"] = "CANCELED"
 
 
 def queue_status():
@@ -97,7 +104,7 @@ def queue_status():
         parser.print_help()
         return
 
-    args = parser.parse_args(sys.argv[1:2])
+    args = parser.parse_args()
 
     # Connect to AWS Batch
     client = boto3.client("batch")
