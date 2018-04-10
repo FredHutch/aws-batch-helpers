@@ -4,13 +4,67 @@
 import os
 import sys
 import json
+import boto3
 import argparse
-from tabulate import tabulate
 import pandas as pd
+from tabulate import tabulate
+from collections import defaultdict
 from batch_project.lib import submit_workflow, get_workflow_status
 from batch_project.lib import cancel_workflow_jobs, save_workflow_logs
 from batch_project.lib import resubmit_failed_jobs, import_project_from_metadata
 from batch_project.lib import create_workflow_from_template, valid_workflow
+
+
+def queue_status():
+    parser = argparse.ArgumentParser(description="""
+    List the status of all of the jobs in a queue.
+    """)
+
+    parser.add_argument("queue_name",
+                        type=str,
+                        help="""Name of job queue""")
+    parser.add_argument("--status",
+                        type=str,
+                        help="""Job status to check""")
+
+    # No arguments were passed in
+    if len(sys.argv) < 2:
+        parser.print_help()
+        return
+
+    args = parser.parse_args(sys.argv[1:2])
+
+    # Connect to AWS Batch
+    client = boto3.client("batch")
+
+    jobs = []
+
+    if args.status is None:
+        job_status = ["SUBMITTED", "PENDING", "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED"]
+    else:
+        job_status = args.status
+        assert job_status in ["SUBMITTED", "PENDING",
+                              "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED"]
+        # Make into a list
+        job_status = [job_status]
+    for js in job_status:
+        r = client.list_jobs(
+            jobQueue=args.queue_name,
+            jobStatus=js
+        )
+        jobs.extend(r["jobSummaryList"])
+        while r.get("nextToken") is not None:
+            r = client.list_jobs(
+                jobQueue=args.queue_name,
+                jobStatus=js,
+                nextToken=r["nextToken"]
+            )
+            jobs.extend(r["jobSummaryList"])
+
+    status_counts = defaultdict(int)
+    for j in jobs:
+        status_counts[j["status"]] += 1
+    print(pd.DataFrame({args.queue_name: status_counts}))
 
 
 def dashboard():
