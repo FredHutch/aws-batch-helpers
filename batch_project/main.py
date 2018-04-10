@@ -15,6 +15,71 @@ from batch_project.lib import resubmit_failed_jobs, import_project_from_metadata
 from batch_project.lib import create_workflow_from_template, valid_workflow
 
 
+def clear_queue():
+    parser = argparse.ArgumentParser(description="""
+    Cancel or terminate all of the jobs in a queue.
+    """)
+
+    parser.add_argument("queue_name",
+                        type=str,
+                        help="""Name of job queue to clear""")
+    parser.add_argument("--status",
+                        type=str,
+                        help="""Subset to jobs with a certain status""")
+
+    # No arguments were passed in
+    if len(sys.argv) < 2:
+        parser.print_help()
+        return
+
+    args = parser.parse_args(sys.argv[1:2])
+
+    # Connect to AWS Batch
+    client = boto3.client("batch")
+
+    jobs = []
+
+    if args.status is None:
+        job_status = ["SUBMITTED", "PENDING", "RUNNABLE",
+                      "STARTING", "RUNNING", "SUCCEEDED"]
+    else:
+        job_status = args.status
+        assert job_status in ["SUBMITTED", "PENDING",
+                              "RUNNABLE", "STARTING", "RUNNING", "SUCCEEDED"]
+        # Make into a list
+        job_status = [job_status]
+    for js in job_status:
+        r = client.list_jobs(
+            jobQueue=args.queue_name,
+            jobStatus=js
+        )
+        jobs.extend(r["jobSummaryList"])
+        while r.get("nextToken") is not None:
+            r = client.list_jobs(
+                jobQueue=args.queue_name,
+                jobStatus=js,
+                nextToken=r["nextToken"]
+            )
+            jobs.extend(r["jobSummaryList"])
+
+    print("Number of jobs to clear from {}: {:,}".format(
+        args.queue_name, len(jobs)
+    ))
+    # Prompt the user for confirmation
+    response = input("Are you sure you want to cancel these jobs? (Y/N): ")
+    assert response == "Y", "Do not cancel without confirmation"
+
+    # Get a message to submit as justfication for the failure
+    cancel_msg = input("What message should describe these cancellations?\n")
+
+    for j in jobs:
+        if j["job_status"] not in ["SUCCEEDED", "FAILED", "CANCELED"]:
+            print("Cancelling {}".format(j["jobId"]))
+            client.cancel_job(jobId=j["jobId"], reason=cancel_msg)
+            client.terminate_job(jobId=j["jobId"], reason=cancel_msg)
+            j["job_status"] = "CANCELED"
+
+
 def queue_status():
     parser = argparse.ArgumentParser(description="""
     List the status of all of the jobs in a queue.

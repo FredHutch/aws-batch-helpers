@@ -43,6 +43,7 @@ setup(
             'batch_project = batch_project.main:main',
             'batch_dashboard = batch_project.main:dashboard',
             'batch_queue_status = batch_project.main:queue_status',
+            'batch_clear_queue = batch_project.main:clear_queue',
         ],
     },
 )
