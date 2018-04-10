@@ -237,10 +237,26 @@ def resubmit_failed_jobs(workflow_fp):
                     "type": "SEQUENTIAL"
                 }
             ]
+            print("Resubmitted " + r["jobId"])
+
+            # Save the response, which includes the jobName and jobId (as a dict)
+            jobs[job_id] = {
+                "jobName": r["jobName"],
+                "jobId": r["jobId"],
+                "outputs": jobs[job_id]["outputs"],
+                "sample": sample_info["_sample"],
+                "job_definition": analysis_config["job_definition"],
+                "job_status": "SUBMITTED",
+                "analysis_ix": analysis_ix
+            }
+            sample_info["job_ids"][analysis_ix] = r["jobId"]
 
             n_resubmitted += 1
 
     print("Resubmitted {:,} failed jobs".format(n_resubmitted))
+
+    config["jobs"] = list(jobs.values())
+
     with open(workflow_fp, "wt") as f:
         json.dump(config, f, indent=4)
 
