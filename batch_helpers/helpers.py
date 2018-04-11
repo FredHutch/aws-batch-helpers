@@ -10,7 +10,7 @@ def exit_and_clean_up(temp_folder):
     logging.info("There was an unexpected failure")
     exc_type, exc_value, exc_traceback = sys.exc_info()
     for line in traceback.format_tb(exc_traceback):
-        logging.info(line)
+        logging.info(line.encode("utf-8"))
 
     # Delete any files that were created for this sample
     logging.info("Removing temporary folder: " + temp_folder)
@@ -42,11 +42,11 @@ def run_cmds(commands, retry=0, catchExcept=False, stdout=None):
     if stdout:
         logging.info("Standard output of subprocess:")
         for line in stdout.decode("latin-1").split('\n'):
-            logging.info(line)
+            logging.info(line.encode("utf-8"))
     if stderr:
         logging.info("Standard error of subprocess:")
         for line in stderr.decode("latin-1").split('\n'):
-            logging.info(line)
+            logging.info(line.encode("utf-8"))
 
     # Check the exit code
     if exitcode != 0 and retry > 0:
