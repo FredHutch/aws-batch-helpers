@@ -361,19 +361,19 @@ def get_workflow_status(fp, force_check=False):
     # Set up a connection to S3 to check for output files
     s3_contents = S3FolderContents()
 
-    # Mark jobs as COMPLETED if the outputs exist
+    # Mark jobs as SUCCEEDED if the outputs exist
     for j in config["jobs"]:
-        if j["job_status"] == "COMPLETED":
+        if j["job_status"] == "SUCCEEDED":
             continue
         if all([
             s3_contents.exists(fp)
             for fp in j["outputs"]
         ]):
-            j["job_status"] = "COMPLETED"
+            j["job_status"] = "SUCCEEDED"
     # Get the list of IDs
     id_list = [
         j["jobId"] for j in config["jobs"]
-        if j["job_status"] != "COMPLETED"
+        if j["job_status"] != "SUCCEEDED"
     ]
 
     # Set up the connection to Batch with boto
@@ -406,6 +406,7 @@ def get_workflow_status(fp, force_check=False):
     # Check to see if the project is completed
     if status_counts.get("SUCCEEDED", 0) == len(config["jobs"]):
         # Set this job as COMPLETED
+        print("{}: Project is COMPLETED!".format(fp))
         config["status"] = "COMPLETED"
 
     # Save the config
