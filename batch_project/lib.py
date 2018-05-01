@@ -205,7 +205,7 @@ def resubmit_failed_jobs(workflow_fp):
             if job_id is None:
                 continue
             assert job_id in jobs
-            if jobs[job_id]["job_status"] != "FAILED":
+            if jobs[job_id]["job_status"] not in ["FAILED", "CANCELED"]:
                 continue
 
             analysis_config = config["analyses"][analysis_ix]
