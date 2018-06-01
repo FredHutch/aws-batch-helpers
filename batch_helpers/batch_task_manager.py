@@ -431,34 +431,37 @@ class BatchTaskManager:
                     for j in job_list["jobSummaryList"]
                 ]
 
-                # Get all the details for this batch of jobs
-                for job_details in self.batch_client.describe_jobs(
-                    jobs=job_id_list
-                )["jobs"]:
-                    # ADD DETAILS ABOUT THIS JOB
-                    job_hash_id = self.hash_job_id(
-                        depends_on=job_details["dependsOn"],
-                        job_definition=job_details["jobDefinition"].split("/")[-1],
-                        parameters=job_details["parameters"],
-                        vcpus=job_details["container"]["vcpus"],
-                        memory=job_details["container"]["memory"],
-                        environment=job_details["container"]["environment"],
-                        timeout_seconds=job_details["timeout"]["attemptDurationSeconds"],
-                    )
+                while len(job_id_list) > 0:
 
-                    self.current_jobs[job_hash_id] = {
-                        "status": job_status,
-                        "job_name": job_details["jobName"],
-                        "job_id": job_details["jobId"],
-                        "depends_on": job_details["dependsOn"],
-                        "job_definition": job_details["jobDefinition"].split("/")[-1],
-                        "parameters": job_details["parameters"],
-                        "vcpus": job_details["container"]["vcpus"],
-                        "memory": job_details["container"]["memory"],
-                        "command": job_details["container"]["command"],
-                        "environment": job_details["container"]["environment"],
-                        "timeout_seconds": job_details["timeout"]["attemptDurationSeconds"]
-                    }
+                    # Get all the details for this batch of jobs
+                    for job_details in self.batch_client.describe_jobs(
+                        jobs=job_id_list[:100]
+                    )["jobs"]:
+                        # ADD DETAILS ABOUT THIS JOB
+                        job_hash_id = self.hash_job_id(
+                            depends_on=job_details["dependsOn"],
+                            job_definition=job_details["jobDefinition"].split("/")[-1],
+                            parameters=job_details["parameters"],
+                            vcpus=job_details["container"]["vcpus"],
+                            memory=job_details["container"]["memory"],
+                            environment=job_details["container"]["environment"],
+                            timeout_seconds=job_details["timeout"]["attemptDurationSeconds"],
+                        )
+
+                        self.current_jobs[job_hash_id] = {
+                            "status": job_status,
+                            "job_name": job_details["jobName"],
+                            "job_id": job_details["jobId"],
+                            "depends_on": job_details["dependsOn"],
+                            "job_definition": job_details["jobDefinition"].split("/")[-1],
+                            "parameters": job_details["parameters"],
+                            "vcpus": job_details["container"]["vcpus"],
+                            "memory": job_details["container"]["memory"],
+                            "command": job_details["container"]["command"],
+                            "environment": job_details["container"]["environment"],
+                            "timeout_seconds": job_details["timeout"]["attemptDurationSeconds"]
+                        }
+                    job_id_list = job_id_list[100:]
 
                 # Check to see if there are more to fetch
                 if "nextToken" in job_list and job_list['NextToken'] is not None:
