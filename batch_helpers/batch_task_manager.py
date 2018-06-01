@@ -279,6 +279,15 @@ class BatchTaskManager:
 
             time.sleep(self.monitor_interval)
 
+    def all_complete(self):
+        """Check to see if all of the jobs are complete."""
+        # Iterate over the jobs submitted as part of this workflow
+        for job_id_hash in list(self.jobs_in_workflow):
+            # If the job has succeeded, do nothing more
+            if self.current_jobs[job_id_hash]["status"] != "SUCCEEDED":
+                return False
+        return True
+
     def hash_job_id(
         self,
         depends_on=[],
