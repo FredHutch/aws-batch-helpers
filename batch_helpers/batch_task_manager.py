@@ -262,6 +262,8 @@ class BatchTaskManager:
             
             # Print the table
             to_print = pd.DataFrame(to_print).T.fillna(0)
+            if "SUCCEEDED" in to_print.columns:
+                to_print.sort_values(by="SUCCEEDED", ascending=False, inplace=True)
             print(
                 tabulate(
                     to_print,
@@ -300,7 +302,7 @@ class BatchTaskManager:
 
     def s3_object_exists(self, s3_path):
         """Check whether a particular object exists on S3."""
-        assert s3_path.endswith("/") is False, "Can't target a folder"
+        assert s3_path.endswith("/") is False, "Can't target a folder ({})".format(s3_path)
 
         # Split up the folder (includes the bucket) and the file
         s3_folder, s3_file = s3_path.rsplit("/", 1)
