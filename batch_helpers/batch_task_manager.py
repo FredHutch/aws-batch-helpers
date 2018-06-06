@@ -365,7 +365,7 @@ class BatchTaskManager:
             if objs['IsTruncated']:
                 continue_flag = True
                 token = objs['NextContinuationToken']
-                objs = self.batch_client.list_objects_v2(
+                objs = self.s3_client.list_objects_v2(
                     Bucket=bucket_name,
                     Prefix=bucket_prefix,
                     ContinuationToken=token
