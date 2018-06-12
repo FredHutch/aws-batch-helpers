@@ -465,5 +465,5 @@ class BatchTaskManager:
                     job_list = self.batch_client.list_jobs(
                         jobQueue=self.job_queue,
                         jobStatus=job_status,
-                        NextToken = job_list['nextToken']
+                        nextToken = job_list['nextToken']
                     )
