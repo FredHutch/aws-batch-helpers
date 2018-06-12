@@ -460,10 +460,10 @@ class BatchTaskManager:
                     job_id_list = job_id_list[100:]
 
                 # Check to see if there are more to fetch
-                if "nextToken" in job_list and job_list['NextToken'] is not None:
+                if "nextToken" in job_list and job_list['nextToken'] is not None:
                     continue_flag = True
                     job_list = self.batch_client.list_jobs(
                         jobQueue=self.job_queue,
                         jobStatus=job_status,
-                        NextToken = job_list['NextToken']
+                        NextToken = job_list['nextToken']
                     )
