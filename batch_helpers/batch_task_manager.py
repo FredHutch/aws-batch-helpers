@@ -107,7 +107,6 @@ class BatchTaskManager:
 
         # Make a hash that uniquely defines this particular new job
         job_hash_id = self.hash_job_id(
-            depends_on=depends_on,
             job_definition=job_definition,
             parameters=parameters,
             vcpus=vcpus,
@@ -243,7 +242,7 @@ class BatchTaskManager:
                     for output_s3_path in self.current_jobs[job_id_hash]["output_files"]
                 ]):
                     logging.info("All outputs found for {}, marking as SUCCEEDED".format(
-                        self.current_jobs[job_id_hash]["job_name"]
+                        self.current_jobs[job_id_hash]["job_id"]
                     ))
                     self.current_jobs[job_id_hash]["status"] = "SUCCEEDED"
                 # Otherwise, check the status
@@ -290,7 +289,6 @@ class BatchTaskManager:
 
     def hash_job_id(
         self,
-        depends_on=[],
         job_definition=None,
         parameters=None,
         vcpus=None,
@@ -300,7 +298,6 @@ class BatchTaskManager:
     ):
         """Make a unique hash of this job."""
         return hash(json.dumps({
-            "depends_on": depends_on,
             "job_definition": job_definition,
             "parameters": parameters,
             "vcpus": vcpus,
@@ -439,7 +436,6 @@ class BatchTaskManager:
                     )["jobs"]:
                         # ADD DETAILS ABOUT THIS JOB
                         job_hash_id = self.hash_job_id(
-                            depends_on=job_details["dependsOn"],
                             job_definition=job_details["jobDefinition"].split("/")[-1],
                             parameters=job_details["parameters"],
                             vcpus=job_details["container"]["vcpus"],
