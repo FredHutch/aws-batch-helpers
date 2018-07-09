@@ -12,120 +12,26 @@ associated with your account in the local environment running this code (usually
 
 #### Concept and terminology
 
-To analyze a set of data, we will run a number of `jobs`, each on a single `sample`. Each `sample` is
-described by `metadata` describing the sample characteristics. Each `job` corresponds to a Job in AWS Batch.
+To analyze a set of data, we will run a number of `jobs`, and each `job` corresponds to a Job in AWS Batch.
 
 Individual `jobs` may have one or more `outputs`, the presence of which determines whether the job is completed.
 
-A `workflow` is a series of `jobs`, each of which is executed on *every* `sample` in the project. This is
-limited to perfectly sequantial workflows -- no support for branching or converging dependency graphs.
+A `workflow` is a set of `jobs`, some of which may be connected as dependencies within the dependency structure provided by AWS Batch, where the downstream job is only started when the upstream job has finished successfully. Note that job success is determined by Batch as the task finishing with exit status 0, with no concept of whether the appropriate output files may exist. In contrast, the larger workflow management system provided in this set of tools will also take into account whether the output files for a `job` already exists, in which case there is no need to submit that `job` to AWS Batch.
 
 
 #### Practial execution
 
-The steps needed to set up and run a project are roughly as follows:
+A single overarching object is created within a Python script of the class `AWSBatchHelper`, and each individual `job` is added with the `AWSBatchHelper.add_job()` function, which returns a `jobId`. The larger Python script will provide the `jobId` as a dependency to any downstream jobs to create a full workflow. At the time that `add_job()` is invoked, the presence of output files are checked on S3, and if they do not exist the job will be submitted to AWS Batch. Even though the job has been submitted, it may not start if the upstream dependent jobs have not been completed.
 
-    1. Set up a `workflow` definition describing the series of jobs to be run on each `sample`
-    2. Create a project from a CSV containing information for all of its `samples`
-    3. Create a `workflow` for this project from the template
-    4. Submit the `workflow` for analysis
-    5. Monitor `job` statuses, restarting jobs as needed
+The function `add_job()` will also check to see whether an identical job is present with a status of SUBMITTED, RUNNABLE, or RUNNING. If so, it will return the `jobId` for that previously created job instead of making a new one. 
+
+After all of the `job` objects have been submitted, the Python script may invoke the `AWSBatchHelper.monitor()` process, which will periodically monitor `job` status and outputs, printing a summary to the screen.
 
 
+### Best practices
 
-#### Workflow definitions
+We suggest that you keep a single CSV with the metadata for all of your samples, and then structure your workflows such that they read in the metadata sheet and start the set of jobs that are required given the project. 
 
-Workflows are defined in a single JSON file with the following structure
+### Example workflows
 
-``` json 
-{
-    # Name for the workflow as a whole
-    "workflow_name": "FAMLI",
-
-    # List of analyses to be executed for each sample
-    "analyses": [
-        {
-            # Job definition (and revision number) in AWS Batch
-            "job_definition": "famli:14",
-
-            # List of output files that will be created upon completion
-            "outputs": [
-                # All embedded variables (e.g. project_name), will be filled in from project data
-                "s3://fh-pi-fredricks-d/lab/Sam_Minot/data/{project_name}/{workflow_name}/{sample_name}.json.gz",
-            ]
-            "queue": "spot-test",
-            "description": "Analysis of WGS datasets with FAMLI (v0.9)",
-            "parameters": {
-                "sample_name": "{sample_name}",
-                "file_name": "{file_name}",
-                "db": "/refdbs/uniref90_diamond_20180104/uniref90_diamond_20180104.dmnd",
-                "threads": "16",
-                "blocks": "15",
-                "min_qual": "30",
-                "batchsize": "200000000",
-                "temp_folder": "/scratch/"
-            },
-            "containerOverrides": {
-                "vcpus": 16,
-                "memory": 122000
-            }
-        },
-        # Multiple analyses may be listed
-        {}
-    ]
-}
-```
-
-#### Creating projects
-
-To make a new project, first create a metadata CSV with a column for the `sample_name` and `file_name`
-for each sample in the project. Then execute the command:
-
-```
-batch_project import <project_name> --metadata <metadata_csv>
-```
-
-This will create a folder named <project_name>, as well as a metadata file in that folder (`metadata.json`).
-
-
-#### Making workflows for projects
-
-To make a workflow for a project, execute the command:
-
-```
-batch_project create <project_name> --definition <workflow_definition_file>
-```
-
-This will create the file: <project_name>/<workflow_name>.json
-
-#### Submitting workflows for analysis
-
-To submit a workflow for analysis on AWS Batch, execute the command:
-
-```
-batch_project submit <project_name>/<workflow_name>.json
-```
-
-#### Resubmitting failed jobs
-
-To resubmit a set of failed jobs (possibly with different resource requests), execute the command:
-
-```
-batch_project submit <project_name>/<workflow_name>.json
-```
-
-#### Monitoring job status
-
-To check on the status of the jobs in a previously executed workflow, execute the command:
-
-```
-batch_project status <project_name>/<workflow_name>.json
-```
-
-#### Monitoring groups of submitted workflows
-
-To print a summary of the status of multiple submitted project:
-
-```
-batch_dashboard
-```
+Examples of the workflow structure envisioned for this utility (as well as the parameters used to invoke jobs with `AWSBatchHelper.add_job()`) can be found in the `workflows` directory.
