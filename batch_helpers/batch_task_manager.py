@@ -441,7 +441,7 @@ class BatchTaskManager:
                             vcpus=job_details["container"]["vcpus"],
                             memory=job_details["container"]["memory"],
                             environment=job_details["container"]["environment"],
-                            timeout_seconds=job_details["timeout"]["attemptDurationSeconds"],
+                            timeout_seconds=job_details.get("timeout", {}).get("attemptDurationSeconds", 0),
                         )
 
                         self.current_jobs[job_hash_id] = {
@@ -455,7 +455,7 @@ class BatchTaskManager:
                             "memory": job_details["container"]["memory"],
                             "command": job_details["container"]["command"],
                             "environment": job_details["container"]["environment"],
-                            "timeout_seconds": job_details["timeout"]["attemptDurationSeconds"]
+                            "timeout_seconds": job_details.get("timeout", {}).get("attemptDurationSeconds", 0)
                         }
                     job_id_list = job_id_list[100:]
 
