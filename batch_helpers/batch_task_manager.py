@@ -97,6 +97,10 @@ class BatchTaskManager:
         # Set all the parameters to strings
         parameters = {k: str(v) for k, v in parameters.items()}
 
+        # Remove some disallowed characters from the job name
+        for k in ["-", ".", "/", "\\"]:
+            job_name = job_name.replace(k, "_")
+
         # Set the parameters with the job definition, adding the custom parameters for this job
         for k, v in self.job_definitions[job_definition]["parameters"].items():
             if k not in parameters:
