@@ -142,6 +142,19 @@ class BatchTaskManager:
 
             # Return None, indicating that no job was created
             return
+
+        # If the job is SUCCEEDED, check to see if the outputs exist
+        if job_hash_id in self.current_jobs and self.current_jobs[job_hash_id]["status"] == "SUCCEEDED":
+            # Make sure that the outputs all exist
+            if all([
+                self.s3_object_exists(output_s3_path)
+                for output_s3_path in output_files
+            ]) is False:
+                logging.info("Although {} is marked as SUCCEEDED, the outputs do not all exist. Rerunning. CHECK FOR ERRORS".format(
+                    job_name
+                ))
+                # Mark as FAILED
+                self.current_jobs[job_hash_id]["status"] = "FAILED"
         
         # Check to see if this job has already been created and (if so) is not FAILED
         # Note that previously submitted jobs that FAILED will be resubmitted
@@ -149,7 +162,7 @@ class BatchTaskManager:
             # If the job has succeeded, return None
             if self.current_jobs[job_hash_id]["status"] == "SUCCEEDED":
                 logging.info(
-                    "Job for {} has already been completed ".format(job_name))
+                    "Job for {} has already been completed and all outputs exist for ".format(job_name))
                 return
             else:
                 logging.info(
