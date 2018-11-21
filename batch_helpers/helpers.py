@@ -83,3 +83,13 @@ def write_s3_json(dat, s3_path):
     bucket, key = s3_path[5:].split("/", 1)
     object = s3.Object(bucket, key)
     object.put(Body=dat_json)
+
+def s3_ls(s3_path):
+    """List the contents of a 'folder' on S3."""
+
+    assert s3_path.startswith("s3://")
+    bucket, prefix = s3_path[5:].split("/", 1)
+
+    conn = boto3.client('s3')
+    for key in conn.list_objects(Bucket=bucket, Prefix=prefix)['Contents']:
+        yield key['Key'].replace(prefix, '')

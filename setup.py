@@ -14,7 +14,7 @@ with open(path.join(here, 'README.md'), encoding='utf-8') as f:
 
 setup(
     name='aws-batch-helpers',
-    version='0.1',
+    version='0.2',
     description='Tools for analysis workflows on AWS Batch',
     long_description=long_description,
     long_description_content_type='text/markdown',
@@ -30,7 +30,7 @@ setup(
     keywords='docker aws',
     packages=find_packages(exclude=['tests']),
     install_requires=[
-        "boto3==1.7.2",
+        "boto3>=1.7.2",
         "pandas>=0.20.3",
         "tabulate==0.8.1"
     ],

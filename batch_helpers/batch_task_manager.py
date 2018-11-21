@@ -413,11 +413,11 @@ class BatchTaskManager:
                 ] = jd
 
             # Check to see if there are more to fetch
-            if "nextToken" in objs and objs['NextToken'] is not None:
+            if "nextToken" in objs and objs['nextToken'] is not None:
                 continue_flag = True
                 objs = self.batch_client.describe_job_definitions(
                     status="ACTIVE",
-                    NextToken=objs['NextToken']
+                    nextToken=objs['nextToken']
                 )
 
     def get_extant_jobs(self):
